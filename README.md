@@ -4,6 +4,8 @@ A self-hosted, dark-mode **block explorer & monitoring dashboard** for a [Logos]
 
 > Explorer UI → **http://localhost:3333**  ·  Grafana → **http://localhost:3000**
 
+> **Disclaimer:** This is an independent, community-built project by a standalone developer. It is **not** affiliated with, endorsed by, or maintained by the Logos / Nomos core dev team. Provided as-is.
+
 ---
 
 ## Features
@@ -214,4 +216,6 @@ running Logos node to improve the UI, types, or docs.
 
 ## License
 
-Provided as-is for Logos testnet node operators.
+Provided as-is, with no warranty, for Logos testnet node operators.
+
+Independent, community-built tool by a standalone developer — **not affiliated with, endorsed by, or maintained by the Logos / Nomos dev team.**
