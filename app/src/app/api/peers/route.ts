@@ -24,6 +24,8 @@ export async function GET() {
       total: peersRes.rows.length,
       connected_peers: netRes.rows[0]?.n_peers ?? null,
       connected: netRes.rows[0]?.n_connections ?? null,
+      // Server wall-clock, so the page's staleness safety-net doesn't depend on the browser clock.
+      server_now: Date.now(),
     });
   } catch (e) {
     return apiError(e);

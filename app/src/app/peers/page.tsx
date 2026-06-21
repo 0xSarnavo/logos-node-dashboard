@@ -26,7 +26,7 @@ interface Peer {
   first_seen: string;
   last_seen: string;
 }
-interface PeersData { peers: Peer[]; countries: { country: string; country_code: string; peer_count: number }[]; total: number; connected_peers?: number | null; connected?: number | null; }
+interface PeersData { peers: Peer[]; countries: { country: string; country_code: string; peer_count: number }[]; total: number; connected_peers?: number | null; connected?: number | null; server_now?: number; }
 interface StatsData {
   by_country: { country: string; country_code: string; count: number }[];
   by_isp: { isp: string; count: number }[];
@@ -106,19 +106,33 @@ export default function PeersPage() {
   const [sortKey, setSortKey] = useState<SortKey>("observed");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const now = Date.now();
+  // Use the server's clock for staleness so the safety-net doesn't depend on the viewer's clock.
+  const now = data?.server_now ?? Date.now();
+  // The node logs its whole known-peer set at once (all peers share one last_seen), so we measure
+  // a peer's status by how far behind the LATEST dump it is — a peer missing from recent dumps has
+  // dropped out of the node's view — rather than by wall-clock age, which would flip every peer in
+  // lockstep. Wall-clock still forces "offline" once the whole set goes very stale.
+  const lastTimes = (data?.peers ?? []).map((p) => (p.last_seen ? new Date(p.last_seen).getTime() : 0));
+  const freshest = lastTimes.length ? Math.max(...lastTimes) : now;
   const peers = (data?.peers ?? []).map((p) => {
     const last = p.last_seen ? new Date(p.last_seen).getTime() : 0;
     const first = p.first_seen ? new Date(p.first_seen).getTime() : last;
-    const ageMin = last > 0 ? (now - last) / 60000 : Infinity;
-    // online = seen <10m, inconsistent = seen 10–60m, offline = >60m; bootstrap is its own class
-    const status: PeerStatus = p.is_bootstrap ? "bootstrap" : ageMin < 10 ? "online" : ageMin < 60 ? "inconsistent" : "offline";
-    return { ...p, observed: Math.max(0, Math.floor((last - first) / 1000)), active: last > 0 && now - last < ACTIVE_WINDOW_MS, status, _last: last, _first: first };
+    const lagMin = last > 0 ? (freshest - last) / 60000 : Infinity; // dumps behind the current set
+    const ageMin = last > 0 ? (now - last) / 60000 : Infinity;       // wall-clock since last seen
+    const status: PeerStatus = p.is_bootstrap ? "bootstrap"
+      : ageMin > 360 ? "offline"     // not seen at all in 6h → gone
+      : lagMin < 5 ? "online"        // present in the latest peer dump
+      : lagMin < 90 ? "inconsistent" // missed recent dumps
+      : "offline";
+    return { ...p, observed: Math.max(0, Math.floor((last - first) / 1000)), active: status === "online", status, _last: last, _first: first };
   });
 
   const total = data?.total ?? 0;
-  const activeCount = peers.filter((p) => p.active).length;
-  const staleCount = peers.length - activeCount;
+  // "Active now" = the node's real live connection count; fall back to the in-set peer count.
+  const inSetCount = peers.filter((p) => p.status === "online").length;
+  const connectedNow = data?.connected_peers ?? null;
+  const activeCount = connectedNow ?? inSetCount;
+  const staleCount = Math.max(0, peers.length - inSetCount);
   const statusCounts = {
     online: peers.filter((p) => p.status === "online").length,
     inconsistent: peers.filter((p) => p.status === "inconsistent").length,
@@ -148,7 +162,7 @@ export default function PeersPage() {
   // Map peers
   const mapPeers: MapPeer[] = peers.map((p) => ({
     ip: p.ip, lat: p.lat, lon: p.lon, city: p.city, country: p.country, isp: p.isp,
-    is_bootstrap: p.is_bootstrap, status: p.status, tracked: fmtDur(p.observed),
+    is_bootstrap: p.is_bootstrap, status: p.status, tracked: fmtDur(p.observed), last_seen: p.last_seen,
   }));
 
   // Table: filter + search + sort
@@ -235,14 +249,14 @@ export default function PeersPage() {
             <div className={railDivider}>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 live-dot" />
-                <span className="text-[11px] text-zinc-400 flex items-center">Active now<InfoTip text="Peers seen in node logs within the last 10 minutes." /></span>
+                <span className="text-[11px] text-zinc-400 flex items-center">Active now<InfoTip text="Live peer connections the node holds right now (from the node API). The map and status below show all tracked peers and whether each is still in the node's latest peer set." /></span>
               </div>
               <span className="text-sm font-bold tabular-nums text-emerald-400">{activeCount}<span className="text-zinc-600 font-normal"> / {peers.length}</span></span>
             </div>
 
             {/* Peer status breakdown */}
             <div className="px-4 py-3 border-b border-white/[0.04]">
-              <span className="text-[11px] text-zinc-400 flex items-center mb-2">Peer status<InfoTip text="Online: seen under 10 min ago. Inconsistent: 10–60 min. Offline: over 60 min. Bootstrap: hard-coded seed nodes." /></span>
+              <span className="text-[11px] text-zinc-400 flex items-center mb-2">Peer status<InfoTip text="Each tracked peer relative to the node's latest peer dump. Online: in the current set. Inconsistent: missed recent dumps. Offline: dropped from the set, or unseen for 6h. Bootstrap: seed nodes." /></span>
               <div className="h-2 rounded-full overflow-hidden flex bg-white/[0.04] mb-2.5">
                 <div className="h-full bg-green-500" style={{ width: `${pctOf(statusCounts.online)}%` }} />
                 <div className="h-full bg-yellow-400" style={{ width: `${pctOf(statusCounts.inconsistent)}%` }} />
@@ -284,8 +298,8 @@ export default function PeersPage() {
 
         {/* Row 2 — KPI strip */}
         <Kpi span="md:col-span-3 lg:col-span-3" label="Total Peers" tip="Geolocated peers discovered from node connection logs." value={total} sub="geolocated" />
-        <Kpi span="md:col-span-3 lg:col-span-3" label="Active Now" tip="Peers seen in node log activity within the last 10 minutes. The node holds fewer live connections at any instant — that count is shown alongside." dot={<span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 live-dot" />}
-          value={activeCount} valueClass={activeCount > 0 ? "text-emerald-400" : "text-zinc-400"} sub={data?.connected != null ? `${staleCount} stale · ${data.connected} connected (node)` : `${staleCount} stale`} />
+        <Kpi span="md:col-span-3 lg:col-span-3" label="Active Now" tip="Live peer connections the node holds right now, straight from the node API." dot={<span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 live-dot" />}
+          value={activeCount} valueClass={activeCount > 0 ? "text-emerald-400" : "text-zinc-400"} sub={`of ${total} tracked${connectedNow != null ? " · live from node" : ""}`} />
         <Kpi span="md:col-span-3 lg:col-span-3" label="Bootstrap" tip="Hard-coded seed nodes." value={boot?.bootstrap ?? 0} sub={`${boot?.regular ?? 0} regular · ${boot?.ratio ?? 0}%`} />
         <Kpi span="md:col-span-3 lg:col-span-3" label="New (24h)" tip="First seen in the last 24h." value={stats?.new_peers_count ?? 0}
           sub={stats?.new_peers_24h?.[0] ? timeAgo(stats.new_peers_24h[0].first_seen, true) : "—"} />

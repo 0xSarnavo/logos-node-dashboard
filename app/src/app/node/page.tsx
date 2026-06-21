@@ -189,16 +189,22 @@ export default function MyNodePage() {
         </div>
 
         {/* Number-tile band — color only where it denotes status; otherwise white */}
-        <Tile span="md:col-span-3 lg:col-span-3">
-          <p className={`${TILE_LABEL} mb-1.5 flex items-center`}>Peers<InfoTip text="Other nodes (computers) your node is directly connected to on the network." /></p>
+        <Tile span="md:col-span-2 lg:col-span-2">
+          <p className={`${TILE_LABEL} mb-1.5 flex items-center`}>Peers<InfoTip text="Other nodes (computers) your node is directly connected to on the network. (The node API reports a single connection count — it doesn't split inbound vs outbound.)" /></p>
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className={`text-2xl font-bold tabular-nums leading-none ${statusText(peerState)}`}>{n?.peers ?? "—"}</span>
             <span className="text-[10px] text-zinc-600">{n?.connections ?? "—"} conn · {n?.pending ?? 0} pending</span>
           </div>
-          <p className="text-[10px] text-zinc-600 mt-2">avg {s?.avg_peers ?? "—"}p · {s?.min_peers ?? "—"}–{s?.max_peers ?? "—"} range · {s?.avg_conn ?? "—"} conn</p>
+          <p className="text-[10px] text-zinc-600 mt-2">avg {s?.avg_peers ?? "—"}p · {s?.min_peers ?? "—"}–{s?.max_peers ?? "—"} range</p>
         </Tile>
 
-        <Tile span="md:col-span-3 lg:col-span-3">
+        <Tile span="md:col-span-2 lg:col-span-2">
+          <p className={`${TILE_LABEL} mb-1.5 flex items-center`}>Transactions<InfoTip text="Total decoded transactions across all indexed blocks, and how many blocks carried at least one." /></p>
+          <p className="text-2xl font-bold tabular-nums leading-none text-white">{s?.total_txs?.toLocaleString() ?? "—"}</p>
+          <p className="text-[10px] text-zinc-600 mt-2">{s?.blocks_with_txs?.toLocaleString() ?? "—"} blocks with tx</p>
+        </Tile>
+
+        <Tile span="md:col-span-2 lg:col-span-2">
           <p className={`${TILE_LABEL} mb-1.5 flex items-center`}>Avg Block Time<InfoTip text="Average gap between new blocks over the last 30 min. Lower means faster blocks." /></p>
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="text-2xl font-bold tabular-nums leading-none text-white">{s?.avg_bt != null ? `${s.avg_bt}s` : "—"}</span>

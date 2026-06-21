@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { ComposableMap, Geographies, Geography, Marker, Sphere } from "react-simple-maps";
+import { timeAgo } from "@/lib/format";
 
 const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 // Square viewBox so the globe stays a full circle and never crops left/right or top/bottom,
@@ -20,6 +21,7 @@ export interface MapPeer {
   is_bootstrap?: boolean;
   status?: PeerStatus;
   tracked?: string;
+  last_seen?: string;
 }
 
 export interface SelfNode {
@@ -28,6 +30,7 @@ export interface SelfNode {
   city?: string;
   country?: string;
   ip?: string;
+  isp?: string;
 }
 
 const STATUS_COLOR: Record<PeerStatus, string> = {
@@ -58,6 +61,7 @@ export default function PeerWorldMap({ peers, self }: { peers: MapPeer[]; self?:
   const [rotLat, setRotLat] = useState(-12);
   const [paused, setPaused] = useState(false);
   const [hover, setHover] = useState<MapPeer | null>(null);
+  const [hoverSelf, setHoverSelf] = useState(false);
   const drag = useRef<{ x: number; y: number; lon: number; lat: number } | null>(null);
   const lonRef = useRef(0);
   const [scale, setScale] = useState(SCALE);
@@ -134,7 +138,7 @@ export default function PeerWorldMap({ peers, self }: { peers: MapPeer[]; self?:
       className="relative select-none mx-auto"
       style={{ maxWidth: 600, cursor: drag.current ? "grabbing" : "grab" }}
       onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => { setPaused(false); setHover(null); drag.current = null; }}
+      onMouseLeave={() => { setPaused(false); setHover(null); setHoverSelf(false); drag.current = null; }}
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -205,41 +209,51 @@ export default function PeerWorldMap({ peers, self }: { peers: MapPeer[]; self?:
         {/* this node — blue, always labelled */}
         {self && isVisible(self.lon, self.lat, rotLon, rotLat) && (
           <Marker coordinates={[self.lon, self.lat]}>
-            <circle r={11} fill={SELF_COLOR} fillOpacity={0.18} />
-            <circle r={4} fill={SELF_COLOR} stroke={light ? "#1e293b" : "#000"} strokeWidth={1} className="live-dot" style={{ filter: `drop-shadow(0 0 6px ${SELF_COLOR})` }} />
-            <g transform="translate(9,-9)" pointerEvents="none">
-              <rect x={0} y={-21} width={92} height={21} rx={5} fill="rgba(10,14,22,0.95)" stroke={SELF_COLOR} strokeOpacity={0.65} strokeWidth={1} />
-              <text x={10} y={-6.5} fontSize={12.5} fontWeight={700} fill="#bfdbfe">My Node</text>
+            {/* No floating label (it clipped at the globe edge) — the blue dot + legend identify it,
+                and hovering shows full details in the corner card. A second ring marks it at rest. */}
+            <g onMouseEnter={() => setHoverSelf(true)} onMouseLeave={() => setHoverSelf(false)} style={{ cursor: "pointer" }}>
+              <circle r={11} fill={SELF_COLOR} fillOpacity={0.18} />
+              <circle r={7} fill="none" stroke={SELF_COLOR} strokeWidth={1} strokeOpacity={0.5} />
+              <circle r={4} fill={SELF_COLOR} stroke={light ? "#1e293b" : "#000"} strokeWidth={1} className="live-dot" style={{ filter: `drop-shadow(0 0 6px ${SELF_COLOR})` }} />
             </g>
           </Marker>
         )}
 
-        {/* hover label */}
-        {hover && isVisible(hover.lon, hover.lat, rotLon, rotLat) && (() => {
-          const st = statusOf(hover);
-          const city = hover.city || hover.country || "Unknown";
-          const sub = hover.country && hover.city ? hover.country : "";
-          const lines = [
-            { t: city, c: "#ffffff", w: 700, s: 15 },
-            ...(sub ? [{ t: sub, c: "#cbd5e1", w: 400, s: 12 }] : []),
-            { t: hover.ip, c: "#a3b3c6", w: 400, s: 12 },
-            { t: STATUS_LABEL[st] + (hover.tracked ? ` · ${hover.tracked}` : ""), c: STATUS_COLOR[st], w: 600, s: 12 },
-          ];
-          const lh = 17;
-          const w = Math.max(124, Math.max(...lines.map((l) => l.t.length)) * 7 + 24);
-          const h = lines.length * lh + 12;
-          return (
-            <Marker coordinates={[hover.lon, hover.lat]}>
-              <g transform="translate(13,-13)" pointerEvents="none">
-                <rect x={0} y={-h} width={w} height={h} rx={6} fill="rgba(10,14,22,0.97)" stroke={STATUS_COLOR[st]} strokeOpacity={0.6} strokeWidth={1} />
-                {lines.map((l, idx) => (
-                  <text key={idx} x={11} y={-h + 20 + idx * lh} fontSize={l.s} fontWeight={l.w} fill={l.c}>{l.t}</text>
-                ))}
-              </g>
-            </Marker>
-          );
-        })()}
       </ComposableMap>
+
+      {/* Detail card — fixed in the corner so it never gets clipped when zoomed/near an edge.
+          Covers hovered peers and My Node, with location, IP, ISP, status and last-seen. */}
+      {(hover || hoverSelf) && (() => {
+        const isSelf = hoverSelf && !hover;
+        const p = hover;
+        const st = isSelf || !p ? null : statusOf(p);
+        const accent = isSelf ? SELF_COLOR : st ? STATUS_COLOR[st] : "#a3b3c6";
+        const title = isSelf ? "My Node" : (p?.city || p?.country || "Unknown peer");
+        const sub = isSelf
+          ? [self?.city, self?.country].filter(Boolean).join(", ")
+          : (p?.country && p?.city ? p.country : "");
+        const ip = isSelf ? self?.ip : p?.ip;
+        const isp = isSelf ? self?.isp : p?.isp;
+        const statusLine = isSelf
+          ? "This dashboard's node"
+          : STATUS_LABEL[st!] + (p?.last_seen ? ` · seen ${timeAgo(p.last_seen, true)}` : p?.tracked ? ` · ${p.tracked}` : "");
+        return (
+          <div
+            style={{
+              position: "absolute", left: 12, bottom: 12, zIndex: 10, pointerEvents: "none",
+              background: "rgba(10,14,22,0.96)", border: `1px solid ${accent}`, borderRadius: 8,
+              padding: "8px 11px", minWidth: 170, maxWidth: 240, lineHeight: 1.5,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "#ffffff", fontSize: 12.5 }}>{title}</div>
+            {sub && <div style={{ color: "#a3b3c6", fontSize: 11 }}>{sub}</div>}
+            {ip && <div style={{ color: "#8b97a8", fontSize: 11, fontFamily: "ui-monospace, monospace" }}>{ip}</div>}
+            {isp && <div style={{ color: "#6b7686", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isp}</div>}
+            <div style={{ color: accent, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{statusLine}</div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

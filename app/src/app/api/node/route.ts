@@ -28,7 +28,9 @@ export async function GET() {
           (SELECT COALESCE(MAX(n_peers), 0) FROM network_snapshots WHERE ts > NOW() - INTERVAL '1 hour') AS max_peers_1h,
           (SELECT COALESCE(AVG(n_connections), 0) FROM network_snapshots WHERE ts > NOW() - INTERVAL '1 hour') AS avg_conn_1h,
           (SELECT COALESCE(AVG(slot - lib_slot), 0) FROM consensus_snapshots WHERE ts > NOW() - INTERVAL '30 minutes') AS avg_finality_lag,
-          (SELECT MIN(ts) FROM consensus_snapshots) AS tracking_since
+          (SELECT MIN(ts) FROM consensus_snapshots) AS tracking_since,
+          (SELECT COALESCE(SUM(tx_count), 0) FROM block_content) AS total_txs,
+          (SELECT COUNT(*) FROM block_content WHERE tx_count > 0) AS blocks_with_txs
       `),
       // Slot rate: measure slot advancement over last 60s
       pool.query(`
@@ -112,6 +114,8 @@ export async function GET() {
         avg_conn: Math.round(parseFloat(s.avg_conn_1h)),
         avg_finality: Math.round(parseFloat(s.avg_finality_lag)),
         tracking_since: s.tracking_since,
+        total_txs: parseInt(s.total_txs),
+        blocks_with_txs: parseInt(s.blocks_with_txs),
       },
     });
   } catch (e) {
