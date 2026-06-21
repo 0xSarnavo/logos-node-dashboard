@@ -189,11 +189,17 @@ export default function BlockDetail() {
             ) : <span className="text-[12px] text-zinc-600">—</span>}
           </Row>
 
-          <Row label="Leader Key" tip="Cryptarchia PoL leader key — not a wallet address. Cannot be linked to a stable operator identity." mono>
+          <Row label="Leader Key" tip="Ephemeral Proof-of-Leadership key. It proves this block's per-slot leadership-lottery win and is, by design, unlinkable to a stable operator. A fresh key is used for every block, so it is not a wallet, account, or node identity." mono>
             {bc?.leader_key ? (
-              <div className="flex items-center">
-                <span className="text-[12px] break-all hash">{bc.leader_key}</span>
-                <CopyBtn text={bc.leader_key} />
+              <div>
+                <div className="flex items-center">
+                  <span className="text-[12px] break-all hash">{bc.leader_key}</span>
+                  <CopyBtn text={bc.leader_key} />
+                </div>
+                <p className="mt-1 text-[10px] text-zinc-600 leading-relaxed max-w-2xl">
+                  Ephemeral Proof-of-Leadership key — proves this block&apos;s per-slot leadership win. By design it&apos;s
+                  unlinkable to a stable operator, and a new key is used for every block, so it is not a wallet, account, or node identity.
+                </p>
               </div>
             ) : <span className="text-[12px] text-zinc-600">—</span>}
           </Row>
