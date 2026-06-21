@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
 import { fetchNodePost } from "@/lib/node";
 import { decodeBlockTxs } from "@/lib/tx";
@@ -36,7 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: { hash: strin
       meta: metaRes.rows[0] ?? null,
       transactions: decodeBlockTxs(block),
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

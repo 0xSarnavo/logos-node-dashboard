@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
 import { fetchNode } from "@/lib/node";
 
@@ -113,7 +114,7 @@ export async function GET() {
         tracking_since: s.tracking_since,
       },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

@@ -114,13 +114,18 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=logos
-      - POSTGRES_PASSWORD=logos_internal_db
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-logos_internal_db}
       - POSTGRES_DB=logos
     volumes:
       - timescale-data:/var/lib/postgresql/data
       - ./indexer/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     expose:
       - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logos -d logos"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     deploy:
       resources:
         limits:
@@ -136,7 +141,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_API=http://host.docker.internal:8080
-      - DB_DSN=postgresql://logos:logos_internal_db@timescaledb:5432/logos
+      - DB_DSN=postgresql://logos:${DB_PASSWORD:-logos_internal_db}@timescaledb:5432/logos
       - POLL_INTERVAL=3
       - NODE_LOG_DIR=/node-logs
       - SIDECAR_API=http://sidecar:8081
@@ -185,11 +190,19 @@ services:
       - DB_PORT=5432
       - DB_NAME=logos
       - DB_USER=logos
-      - DB_PASSWORD=logos_internal_db
+      - DB_PASSWORD=${DB_PASSWORD:-logos_internal_db}
+      - WALLET_KEYS=${WALLET_KEYS:-}
+      - FAUCET_ENABLED=${FAUCET_ENABLED:-true}
     ports:
       - "127.0.0.1:3333:3333"
     depends_on:
       - timescaledb
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3333/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
     deploy:
       resources:
         limits:

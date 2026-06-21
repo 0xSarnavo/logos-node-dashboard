@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from "recharts";
 import { useIsLight, chartColor } from "@/lib/useTheme";
+import { formatClockTime as formatTime } from "@/lib/format";
 
 interface ChartProps {
   data: { time: string; value: number }[];
@@ -18,11 +19,6 @@ interface ChartProps {
   color?: string;
   unit?: string;
   height?: number;
-}
-
-function formatTime(ts: string) {
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function CustomTooltip({ active, payload, label, unit }: any) {

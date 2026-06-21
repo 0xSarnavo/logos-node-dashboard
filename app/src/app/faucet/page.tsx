@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useLive } from "@/components/useLive";
 import Chart from "@/components/Chart";
 import MultiChart from "@/components/MultiChart";
+import { truncHash } from "@/lib/format";
 
 function fmtDur(s: number) {
   if (s < 60) return `${s}s`;
@@ -13,10 +14,6 @@ function fmtDur(s: number) {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-function truncHash(h: string) {
-  if (!h || h.length < 16) return h || "—";
-  return h.slice(0, 10) + "…" + h.slice(-4);
-}
 
 export default function FaucetPage() {
   const { data: info } = useLive<any>("/api/faucet", 15000);

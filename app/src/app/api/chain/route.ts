@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
 import { fetchNode } from "@/lib/node";
 
@@ -24,9 +25,11 @@ export async function GET() {
     const GENESIS_TS = 1776093586; // 2026-04-13T15:19:31Z
     const SLOT_DURATION = 1.0; // seconds
     const node_slot = nodeInfo?.slot ?? 0;
-    const live_slot = Math.floor((Date.now() / 1000 - GENESIS_TS) / SLOT_DURATION);
-    const slots_behind = live_slot - node_slot;
-    const sync_percent = Math.min(100, (node_slot / live_slot) * 100);
+    // The node can briefly lead the genesis-derived slot; clamp so we never show negative
+    // "slots behind", NaN, or >100% sync (LOG-5).
+    const live_slot = Math.max(1, Math.floor((Date.now() / 1000 - GENESIS_TS) / SLOT_DURATION));
+    const slots_behind = Math.max(0, live_slot - node_slot);
+    const sync_percent = node_slot >= live_slot ? 100 : Math.max(0, Math.min(100, (node_slot / live_slot) * 100));
     const caught_up = slots_behind <= 120;
 
     return NextResponse.json({
@@ -51,7 +54,7 @@ export async function GET() {
       sync_percent,
       caught_up,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

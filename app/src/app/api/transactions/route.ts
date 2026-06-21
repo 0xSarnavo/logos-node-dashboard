@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
 import { fetchNode, fetchNodePost } from "@/lib/node";
 import { decodeBlockTxs, DecodedTx } from "@/lib/tx";
@@ -13,7 +14,10 @@ async function getTxs(hash: string): Promise<DecodedTx[]> {
   const c = cache.get(hash);
   if (c) return c;
   const block = await fetchNodePost<any>("storage/block", hash);
-  const txs = block ? decodeBlockTxs(block) : [];
+  // Don't cache when the node was unreachable — caching [] would permanently poison the
+  // block with an empty tx list (LOG-2). Only memoize a real, decoded result.
+  if (!block) return [];
+  const txs = decodeBlockTxs(block);
   cache.set(hash, txs);
   if (cache.size > 2000) cache.delete(cache.keys().next().value!);
   return txs;
@@ -99,7 +103,7 @@ export async function GET(req: NextRequest) {
       lib_slot: libSlot,
       recent_blocks: markFinal(recentBlocks.rows, libSlot),
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

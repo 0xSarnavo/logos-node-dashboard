@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const [peersRes, countryRes] = await Promise.all([
+    const [peersRes, countryRes, netRes] = await Promise.all([
       pool.query("SELECT * FROM peers WHERE lat IS NOT NULL ORDER BY last_seen DESC"),
       pool.query(`
         SELECT country, country_code, COUNT(*) as peer_count,
@@ -14,13 +15,17 @@ export async function GET() {
         GROUP BY country, country_code
         ORDER BY peer_count DESC
       `),
+      // Node's live connection counts (latest snapshot) — "connected right now"
+      pool.query("SELECT n_peers, n_connections FROM network_snapshots ORDER BY ts DESC LIMIT 1"),
     ]);
     return NextResponse.json({
       peers: peersRes.rows,
       countries: countryRes.rows,
       total: peersRes.rows.length,
+      connected_peers: netRes.rows[0]?.n_peers ?? null,
+      connected: netRes.rows[0]?.n_connections ?? null,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

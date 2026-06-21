@@ -5,6 +5,7 @@ import { useLive } from "@/components/useLive";
 import { SkeletonRows } from "@/components/Skeleton";
 import { InfoTip } from "@/components/InfoTip";
 import type { MapPeer, PeerStatus } from "@/components/PeerWorldMap";
+import { timeAgo } from "@/lib/format";
 
 const PeerWorldMap = dynamic(() => import("@/components/PeerWorldMap"), {
   ssr: false,
@@ -25,7 +26,7 @@ interface Peer {
   first_seen: string;
   last_seen: string;
 }
-interface PeersData { peers: Peer[]; countries: { country: string; country_code: string; peer_count: number }[]; total: number; }
+interface PeersData { peers: Peer[]; countries: { country: string; country_code: string; peer_count: number }[]; total: number; connected_peers?: number | null; connected?: number | null; }
 interface StatsData {
   by_country: { country: string; country_code: string; count: number }[];
   by_isp: { isp: string; count: number }[];
@@ -46,15 +47,6 @@ function fmtDur(s: number | null) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ${m % 60}m`;
   return `${Math.floor(h / 24)}d ${h % 24}h`;
-}
-function timeAgo(ts: string) {
-  if (!ts) return "—";
-  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-  if (s < 5) return "just now";
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
 }
 function countryFlag(code: string): string {
   if (!code || code.length !== 2) return "🏳️";
@@ -94,8 +86,8 @@ function BarRow({ label, count, max }: { label: ReactNode; count: number; max: n
   return (
     <div className="flex items-center gap-3 px-4 py-1.5">
       <div className="w-36 shrink-0 text-[11px] text-zinc-300 truncate flex items-center gap-1.5">{label}</div>
-      <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
-        <div className="h-full bg-zinc-500/60 rounded-full" style={{ width: `${pct}%` }} />
+      <div className="flex-1 h-1.5 bar-track rounded-full overflow-hidden">
+        <div className="h-full bar-fill rounded-full" style={{ width: `${pct}%` }} />
       </div>
       <span className="w-8 text-right text-[11px] tabular-nums text-zinc-400">{count}</span>
     </div>
@@ -137,7 +129,8 @@ export default function PeersPage() {
   const pctOf = (n: number) => (peers.length ? (n / peers.length) * 100 : 0);
   const countries = stats?.by_country ?? data?.countries?.map((c) => ({ country: c.country, country_code: c.country_code, count: c.peer_count })) ?? [];
   const continents = stats?.continents ?? [];
-  const observedSorted = peers.map((p) => p.observed).filter((x) => x > 0).sort((a, b) => a - b);
+  // Include every tracked peer (single-sightings observe ~0) so the median isn't skewed (LOG-8).
+  const observedSorted = peers.map((p) => p.observed).sort((a, b) => a - b);
   const median = observedSorted.length ? observedSorted[Math.floor(observedSorted.length / 2)] : 0;
   const earliest = peers.reduce((min, p) => (p._first && p._first < min ? p._first : min), now);
   const boot = stats?.bootstrap;
@@ -216,7 +209,7 @@ export default function PeersPage() {
           <span className={`w-2 h-2 rounded-full live-dot ${healthDot}`} />
           <span className={`text-xs font-medium ${healthText}`}>{activeCount} active</span>
         </span>
-        <span className="ml-auto text-[10px] text-zinc-600">{total} peers geolocated · tracking for {fmtDur((now - earliest) / 1000)}</span>
+        <span className="ml-auto text-[10px] text-zinc-600">{total} tracked{data?.connected_peers != null ? ` · ${data.connected_peers} connected now` : ""} · tracking for {fmtDur((now - earliest) / 1000)}</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-6 lg:grid-cols-12 gap-4">
@@ -291,11 +284,11 @@ export default function PeersPage() {
 
         {/* Row 2 — KPI strip */}
         <Kpi span="md:col-span-3 lg:col-span-3" label="Total Peers" tip="Geolocated peers discovered from node connection logs." value={total} sub="geolocated" />
-        <Kpi span="md:col-span-3 lg:col-span-3" label="Active Now" tip="Seen within the last 10 minutes." dot={<span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 live-dot" />}
-          value={activeCount} valueClass={activeCount > 0 ? "text-emerald-400" : "text-zinc-400"} sub={`${staleCount} stale`} />
+        <Kpi span="md:col-span-3 lg:col-span-3" label="Active Now" tip="Peers seen in node log activity within the last 10 minutes. The node holds fewer live connections at any instant — that count is shown alongside." dot={<span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 live-dot" />}
+          value={activeCount} valueClass={activeCount > 0 ? "text-emerald-400" : "text-zinc-400"} sub={data?.connected != null ? `${staleCount} stale · ${data.connected} connected (node)` : `${staleCount} stale`} />
         <Kpi span="md:col-span-3 lg:col-span-3" label="Bootstrap" tip="Hard-coded seed nodes." value={boot?.bootstrap ?? 0} sub={`${boot?.regular ?? 0} regular · ${boot?.ratio ?? 0}%`} />
         <Kpi span="md:col-span-3 lg:col-span-3" label="New (24h)" tip="First seen in the last 24h." value={stats?.new_peers_count ?? 0}
-          sub={stats?.new_peers_24h?.[0] ? timeAgo(stats.new_peers_24h[0].first_seen) : "—"} />
+          sub={stats?.new_peers_24h?.[0] ? timeAgo(stats.new_peers_24h[0].first_seen, true) : "—"} />
 
         {/* My Node — this dashboard's own node on the network */}
         {self?.ip && (
@@ -339,8 +332,8 @@ export default function PeersPage() {
                 <span className="text-[12px] font-semibold tabular-nums">{fmtDur(p.observed)}</span>
               </div>
               <div className="flex items-center gap-2 mt-1 pl-[42px]">
-                <div className="flex-1 h-1 bg-white/[0.04] rounded-full overflow-hidden">
-                  <div className="h-full bg-zinc-500/50 rounded-full" style={{ width: `${(p.observed / maxObserved) * 100}%` }} />
+                <div className="flex-1 h-1 bar-track rounded-full overflow-hidden">
+                  <div className="h-full bar-fill rounded-full" style={{ width: `${(p.observed / maxObserved) * 100}%` }} />
                 </div>
                 <span className="text-[9px] text-zinc-600 shrink-0">{p.city || p.country || "—"}</span>
               </div>
@@ -381,7 +374,7 @@ export default function PeersPage() {
                 <p className="hash text-[11px] text-zinc-300 truncate">{p.ip}</p>
                 <p className="text-[9px] text-zinc-600 truncate">{[p.city, p.country].filter(Boolean).join(", ") || "—"}{p.isp ? ` · ${p.isp}` : ""}</p>
               </div>
-              <span className="text-[10px] text-zinc-500 shrink-0">{timeAgo(p.first_seen)}</span>
+              <span className="text-[10px] text-zinc-500 shrink-0">{timeAgo(p.first_seen, true)}</span>
             </div>
           ))}
         </Panel>
@@ -444,8 +437,8 @@ export default function PeersPage() {
                     </td>
                     <td className="py-2 px-4 text-zinc-500 max-w-[220px] truncate" title={p.isp}>{p.isp || "—"}</td>
                     <td className="py-2 px-4 text-right tabular-nums font-medium">{fmtDur(p.observed)}</td>
-                    <td className="py-2 px-4 text-right text-zinc-500">{timeAgo(p.first_seen)}</td>
-                    <td className={`py-2 px-4 text-right tabular-nums ${p.active ? "text-emerald-400/70" : "text-zinc-500"}`}>{timeAgo(p.last_seen)}</td>
+                    <td className="py-2 px-4 text-right text-zinc-500">{timeAgo(p.first_seen, true)}</td>
+                    <td className={`py-2 px-4 text-right tabular-nums ${p.active ? "text-emerald-400/70" : "text-zinc-500"}`}>{timeAgo(p.last_seen, true)}</td>
                   </tr>
                 ))}
               </tbody>

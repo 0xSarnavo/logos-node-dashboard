@@ -1,2 +1,3 @@
-flask==3.1.0
-rocksdb-py==0.5.0
+# The sidecar uses only the Python standard library (http.server, subprocess, struct).
+# Its one real dependency is the RocksDB `ldb` CLI tool, installed via the Dockerfile (apt),
+# not pip. No Python packages are required.

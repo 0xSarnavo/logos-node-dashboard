@@ -4,23 +4,14 @@ import { useState } from "react";
 import { useLive } from "@/components/useLive";
 import { SkeletonRows } from "@/components/Skeleton";
 import SlotStrip from "@/components/SlotStrip";
+import { StatusBadge } from "@/components/StatusBadge";
+import { timeAgo, truncHash } from "@/lib/format";
 
-function truncHash(h: string) {
-  if (!h || h.length < 20) return h || "—";
-  return h.slice(0, 8) + "\u2026" + h.slice(-6);
-}
 
 function fmtTime(ts: string) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function timeAgo(ts: string) {
-  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-  if (s < 5) return "now";
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  return `${Math.floor(s / 3600)}h`;
-}
 
 function BlockTimeCell({ ms, hasProd }: { ms: number | null; hasProd: boolean }) {
   if (!ms) return <span className="text-zinc-700">{hasProd ? "—" : ""}</span>;
@@ -32,9 +23,6 @@ function BlockTimeCell({ ms, hasProd }: { ms: number | null; hasProd: boolean })
   return <span className={`tabular-nums font-medium ${color}`}>{s.toFixed(1)}s</span>;
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return <span className={`badge badge-${status}`}>{status}</span>;
-}
 
 function BlockTimeHistogram({ data }: { data: any[] }) {
   if (!data?.length) return null;

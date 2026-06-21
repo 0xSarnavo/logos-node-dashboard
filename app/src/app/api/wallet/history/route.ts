@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
 import { fetchNode } from "@/lib/node";
+import { WALLET_KEYS, shortKey } from "@/lib/wallets";
+import { apiError } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
-
-const WALLET_KEYS = (
-  process.env.WALLET_KEYS ||
-  "5279d197c8a0a06fdb6a73a2e66cdd81cc206067ae5b852e784bbd6127441607,3b2e4ffbf402033542153420f04cbee61f27187437801bb08850bd22d540061c"
-)
-  .split(",")
-  .filter(Boolean);
 
 export async function GET() {
   try {
@@ -27,7 +22,7 @@ export async function GET() {
 
         return {
           address: key,
-          short: key.slice(0, 8) + "\u2026" + key.slice(-4),
+          short: shortKey(key),
           balance: data?.balance ?? 0,
           note_count: noteCount,
           status,
@@ -48,7 +43,7 @@ export async function GET() {
       fetched_at: new Date().toISOString(),
       note: "Historical balance tracking requires indexer support. This endpoint currently returns live state.",
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

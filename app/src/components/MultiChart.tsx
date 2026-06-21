@@ -10,6 +10,7 @@ import {
   Legend,
 } from "recharts";
 import { useIsLight, chartColor } from "@/lib/useTheme";
+import { formatClockTime as formatTime } from "@/lib/format";
 
 interface Series {
   key: string;
@@ -21,10 +22,6 @@ interface MultiChartProps {
   data: Record<string, any>[];
   series: Series[];
   height?: number;
-}
-
-function formatTime(ts: string) {
-  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function MultiChart({ data, series, height = 200 }: MultiChartProps) {

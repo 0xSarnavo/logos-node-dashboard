@@ -5,18 +5,8 @@ import { useLive } from "@/components/useLive";
 import { SkeletonRows } from "@/components/Skeleton";
 import { opAccent } from "@/lib/tx";
 import { RANGES } from "@/lib/ranges";
+import { timeAgo, truncHash } from "@/lib/format";
 
-function truncHash(h: string) {
-  if (!h || h.length < 20) return h || "—";
-  return h.slice(0, 10) + "…" + h.slice(-6);
-}
-function timeAgo(ts: string) {
-  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-  if (s < 5) return "now";
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  return `${Math.floor(s / 3600)}h`;
-}
 
 function OpBadge({ name, code }: { name: string; code: number }) {
   return <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${opAccent(code)}`}>{name}</span>;

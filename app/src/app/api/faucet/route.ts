@@ -1,20 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchNode } from "@/lib/node";
 import pool from "@/lib/db";
+import { WALLET_KEYS, shortKey, isValidKey } from "@/lib/wallets";
+import { apiError, faucetEnabled, faucetDisabled } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 const FAUCET_URL = "https://testnet.blockchain.logos.co/web/faucet-backend";
-const KNOWN_KEYS = [
-  "5279d197c8a0a06fdb6a73a2e66cdd81cc206067ae5b852e784bbd6127441607",
-  "3b2e4ffbf402033542153420f04cbee61f27187437801bb08850bd22d540061c",
-];
 
 // POST /api/faucet — single drip, logged to DB
 export async function POST(req: NextRequest) {
+  if (!faucetEnabled()) return faucetDisabled();
   try {
     const body = await req.json().catch(() => ({}));
-    const key = body.key || KNOWN_KEYS[0];
+    const key = body.key ?? WALLET_KEYS[0];
+    // The key is interpolated into outbound URLs — reject anything that isn't 64-hex (SEC-1).
+    if (!isValidKey(key)) {
+      return NextResponse.json({ error: "Invalid wallet key" }, { status: 400 });
+    }
     const sessionId = body.session_id || null;
 
     const res = await fetch(`${FAUCET_URL}/${key}`, {
@@ -32,7 +35,6 @@ export async function POST(req: NextRequest) {
 
     const isNew = status === 200 && !!data.hash;
 
-    // Get current balance
     let balance: number | null = null;
     if (isNew) {
       try {
@@ -41,7 +43,6 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    // Store in DB
     try {
       await pool.query(
         `INSERT INTO faucet_logs (session_id, wallet_key, status_code, tx_hash, is_new_grant, amount, balance_after, error)
@@ -49,7 +50,6 @@ export async function POST(req: NextRequest) {
         [sessionId, key, status, data.hash || null, isNew, isNew ? 1000 : 0, balance, data.error || null]
       );
 
-      // Update session stats
       if (sessionId) {
         await pool.query(`
           UPDATE faucet_sessions SET
@@ -70,7 +70,6 @@ export async function POST(req: NextRequest) {
         ]);
       }
 
-      // Store balance snapshot if new grant
       if (isNew && balance !== null) {
         await pool.query(
           "INSERT INTO faucet_balances (wallet_key, balance) VALUES ($1, $2)",
@@ -83,35 +82,33 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       status, hash: data.hash || null, success: isNew,
-      key_short: key.slice(0, 8) + "…" + key.slice(-4),
+      key_short: shortKey(key),
       balance, amount: isNew ? 1000 : 0,
       timestamp: new Date().toISOString(),
     });
-  } catch (e: any) {
-    return NextResponse.json({ status: 0, error: e.message, success: false }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }
 
 // GET /api/faucet — balances + session history
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const balances = await Promise.all(
-      KNOWN_KEYS.map(async (key) => {
+      WALLET_KEYS.map(async (key) => {
         const data = await fetchNode<any>(`wallet/${key}/balance`);
         return {
-          key, short: key.slice(0, 8) + "…" + key.slice(-4),
+          key, short: shortKey(key),
           balance: data?.balance ?? null,
           notes: data?.notes ? Object.keys(data.notes).length : 0,
         };
       })
     );
 
-    // Past sessions
     const sessions = await pool.query(
       `SELECT * FROM faucet_sessions ORDER BY started_at DESC LIMIT 20`
     );
 
-    // Lifetime stats
     const lifetime = await pool.query(`
       SELECT
         COUNT(*) as total_calls,
@@ -129,25 +126,30 @@ export async function GET(req: NextRequest) {
       sessions: sessions.rows,
       lifetime: lifetime.rows[0],
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }
 
 // PUT /api/faucet — start/stop session
 export async function PUT(req: NextRequest) {
+  if (!faucetEnabled()) return faucetDisabled();
   try {
     const body = await req.json();
 
     if (body.action === "start") {
+      const keys: string[] = (Array.isArray(body.keys) && body.keys.length) ? body.keys : WALLET_KEYS;
+      // All keys are interpolated into outbound faucet/node URLs — reject any non-64-hex (SEC-5).
+      if (!keys.every(isValidKey)) {
+        return NextResponse.json({ error: "Invalid wallet key in keys[]" }, { status: 400 });
+      }
       const res = await pool.query(
         `INSERT INTO faucet_sessions (gap_seconds, max_grants, keys)
          VALUES ($1, $2, $3) RETURNING id`,
-        [body.gap || 12, body.max_grants || 0, body.keys || KNOWN_KEYS]
+        [body.gap || 12, body.max_grants || 0, keys]
       );
 
-      // Snapshot starting balances
-      for (const key of (body.keys || KNOWN_KEYS)) {
+      for (const key of keys) {
         const data = await fetchNode<any>(`wallet/${key}/balance`);
         if (data?.balance != null) {
           await pool.query(
@@ -169,7 +171,7 @@ export async function PUT(req: NextRequest) {
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

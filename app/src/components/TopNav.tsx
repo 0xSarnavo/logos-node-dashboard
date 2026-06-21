@@ -99,15 +99,16 @@ export default function TopNav() {
         )}
       </button>
 
-      <form onSubmit={handleSearch} className="hidden md:block md:flex-1 md:max-w-sm">
+      <form onSubmit={handleSearch} role="search" aria-label="Site search" className="hidden md:block md:flex-1 md:max-w-sm">
         <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search by block height, transaction hash, or slot"
             placeholder="block / tx / slot..."
             className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-white/[0.12] focus:bg-white/[0.05] transition-all duration-200 hash"
           />

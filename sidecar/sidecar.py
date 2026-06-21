@@ -139,7 +139,8 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        # No CORS header: the sidecar is internal-only (not published) and called
+        # server-to-server by the explorer, so a wildcard ACAO is unnecessary (INF-2).
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

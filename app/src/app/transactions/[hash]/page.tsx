@@ -3,11 +3,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { useLive } from "@/components/useLive";
 import { opAccent } from "@/lib/tx";
+import { truncHash } from "@/lib/format";
 
-function trunc(h: string, head = 12, tail = 8) {
-  if (!h || h.length < head + tail + 2) return h || "—";
-  return h.slice(0, head) + "…" + h.slice(-tail);
-}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -61,7 +58,7 @@ function Operation({ op }: { op: any }) {
           {op.inputs?.length ? (
             <div className="mb-2">
               <div className="text-[10px] text-zinc-600 mb-1">Inputs — spent notes (opaque commitments, not addresses)</div>
-              {op.inputs.map((inp: string, i: number) => <div key={i} className="hash text-[11px] text-zinc-400">{trunc(inp, 14, 8)}</div>)}
+              {op.inputs.map((inp: string, i: number) => <div key={i} className="hash text-[11px] text-zinc-400">{truncHash(inp, 14, 8)}</div>)}
             </div>
           ) : null}
           {op.outputs?.length ? (
@@ -69,7 +66,7 @@ function Operation({ op }: { op: any }) {
               <div className="text-[10px] text-zinc-600 mb-1">Outputs — recipient wallets</div>
               {op.outputs.map((o: any, i: number) => (
                 <div key={i} className="flex items-center justify-between gap-3">
-                  <span className="hash text-[11px] text-emerald-400/80 truncate">{trunc(o.pk, 14, 8)}</span>
+                  <span className="hash text-[11px] text-emerald-400/80 truncate">{truncHash(o.pk, 14, 8)}</span>
                   <span className="tabular-nums text-[11px] text-zinc-300">{Number(o.value).toLocaleString()}</span>
                 </div>
               ))}
@@ -100,7 +97,7 @@ export default function TxDetailPage({ params }: { params: { hash: string } }) {
       <div className="flex items-center gap-2 text-[11px] text-zinc-600 mb-3">
         <Link href="/transactions" className="hover:text-zinc-300">Transactions</Link>
         <span>›</span>
-        <span className="hash text-zinc-500">{trunc(hash, 8, 6)}</span>
+        <span className="hash text-zinc-500">{truncHash(hash, 8, 6)}</span>
       </div>
 
       <h1 className="text-xl font-bold tracking-tight mb-1">Transaction{(data?.transactions?.length ?? 0) > 1 ? "s" : ""}</h1>
@@ -123,7 +120,7 @@ export default function TxDetailPage({ params }: { params: { hash: string } }) {
               <span className="text-zinc-600 ml-2">slot {data.header?.slot?.toLocaleString() ?? data.meta?.slot?.toLocaleString() ?? "—"}</span>
             </Row>
             <Row label="Version">{data.header?.version ?? "—"}</Row>
-            <Row label="Parent"><span className="hash">{trunc(data.header?.parent_block ?? "", 14, 8)}</span></Row>
+            <Row label="Parent"><span className="hash">{truncHash(data.header?.parent_block ?? "", 14, 8)}</span></Row>
             <Row label="Transactions">{data.transactions?.length ?? 0}</Row>
           </div>
 

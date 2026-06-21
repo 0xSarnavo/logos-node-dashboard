@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { SkeletonRows } from "@/components/Skeleton";
 import { InfoTip } from "@/components/InfoTip";
+import { StatusBadge } from "@/components/StatusBadge";
+import { timeAgo } from "@/lib/format";
 
 function CopyBtn({ text }: { text: string }) {
   const [ok, setOk] = useState(false);
@@ -28,18 +30,7 @@ function Row({ label, tip, mono, children, value }: { label: string; tip?: strin
   );
 }
 
-function StatusBadge({ status, large }: { status: string; large?: boolean }) {
-  return <span className={`badge badge-${status} ${large ? "text-[11px] px-3 py-1" : ""}`}>{status}</span>;
-}
 
-function timeAgo(ts: string) {
-  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-  if (s < 5) return "just now";
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
 
 function BlockTimeDisplay({ ms }: { ms: number }) {
   const s = ms / 1000;
@@ -221,7 +212,7 @@ export default function BlockDetail() {
             <Row label="Produced" tip="When the indexer first detected this new block height.">
               <span className="text-[12px]">
                 {new Date(event.produced_at).toLocaleString()}
-                <span className="text-zinc-600 ml-2">({timeAgo(event.produced_at)})</span>
+                <span className="text-zinc-600 ml-2">({timeAgo(event.produced_at, true)})</span>
               </span>
             </Row>
           )}
@@ -229,7 +220,7 @@ export default function BlockDetail() {
           <Row label="Indexed" tip="When the block hash was stored in the explorer database.">
             <span className="text-[12px]">
               {new Date(block.indexed_at).toLocaleString()}
-              <span className="text-zinc-600 ml-2">({timeAgo(block.indexed_at)})</span>
+              <span className="text-zinc-600 ml-2">({timeAgo(block.indexed_at, true)})</span>
             </span>
           </Row>
 

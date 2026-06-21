@@ -189,6 +189,47 @@ body {
 .info-tip-ic { display: inline-flex; align-items: center; vertical-align: middle; margin-left: 4px; }
 .info-tip-icon { width: 13px; height: 13px; color: var(--text-muted); transition: color 0.15s ease; flex-shrink: 0; }
 .info-tip-ic:hover .info-tip-icon { color: #e4e4e7; }
+[data-theme="light"] .info-tip-ic:hover .info-tip-icon { color: #18181b; }
+
+/* Portal tooltip — fixed to viewport, never clipped or off-screen (width set inline) */
+.tip-text-fixed {
+  position: fixed;
+  z-index: 9999;
+  max-width: 264px;
+  background: var(--tooltip-bg);
+  color: var(--text);
+  border: 1px solid var(--tooltip-border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.30);
+  pointer-events: none;
+  animation: fade-up 0.12s ease-out both;
+}
+
+/* Proportion bars (leaderboards) — clear track + fill contrast in BOTH themes */
+.bar-track { background: rgba(255,255,255,0.07); }
+[data-theme="light"] .bar-track { background: rgba(0,0,0,0.09); }
+.bar-fill {
+  background: linear-gradient(90deg, rgba(161,161,170,0.65), rgba(244,244,246,0.92));
+  transition: width 0.5s cubic-bezier(0.22,1,0.36,1);
+}
+[data-theme="light"] .bar-fill {
+  background: linear-gradient(90deg, rgba(82,82,91,0.75), rgba(24,24,27,0.92));
+}
+
+/* Slot strip — newest produced block pops in as it arrives */
+@keyframes slot-pop {
+  0%   { transform: scaleY(0.35); opacity: 0.35; }
+  60%  { transform: scaleY(1.12); opacity: 1; }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+.slot-tip { animation: slot-pop 0.45s ease-out; transform-origin: bottom; }
 
 /* Hover accents — neutral grey/white focus (no color) */
 .glass { transition: border-color 0.15s ease; }

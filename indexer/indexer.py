@@ -76,31 +76,50 @@ def is_private_ip(ip):
     return False
 
 
-def scrape_peer_ips():
-    """Read node log files and extract unique public IP addresses."""
+# Per-file byte offsets already consumed. Reading only NEW log bytes each cycle lets a peer's
+# last_seen advance *only while it is actually active*, so idle/dropped peers age into
+# stale/offline instead of looking online forever (the node exposes no live peer-IP API).
+_log_offsets = {}
+# Cap bytes read per file per cycle so a huge/just-rotated log can't blow up memory (OOM).
+# On first seed we read only the recent tail; older peers are already in the DB from prior runs.
+MAX_LOG_READ = 4 * 1024 * 1024  # 4 MB
+
+
+def scrape_new_peer_ips():
+    """Return public IPs found in log bytes appended since the last call.
+    First call per file (and after a log rotation/truncation) reads the whole file to seed peers."""
     if not os.path.isdir(NODE_LOG_DIR):
         log.warning("Node log directory not found: %s", NODE_LOG_DIR)
         return set()
 
-    all_ips = set()
+    ips = set()
     try:
         for entry in os.listdir(NODE_LOG_DIR):
             filepath = os.path.join(NODE_LOG_DIR, entry)
             if not os.path.isfile(filepath):
                 continue
             try:
-                with open(filepath, "r", errors="ignore") as f:
-                    for line in f:
-                        matches = IP4_PATTERN.findall(line)
-                        all_ips.update(matches)
+                size = os.path.getsize(filepath)
+                offset = _log_offsets.get(filepath, 0)
+                if size < offset:      # rotated/truncated — re-read from the start
+                    offset = 0
+                if size <= offset:     # nothing new since last cycle
+                    continue
+                start = offset
+                if size - start > MAX_LOG_READ:   # bound memory — read only the recent tail
+                    start = size - MAX_LOG_READ
+                with open(filepath, "rb") as f:
+                    f.seek(start)
+                    chunk = f.read(size - start)
+                _log_offsets[filepath] = size
+                text = chunk.decode("utf-8", errors="ignore")
+                ips.update(IP4_PATTERN.findall(text))
             except Exception as e:
                 log.warning("Error reading log file %s: %s", entry, e)
     except Exception as e:
         log.warning("Error scanning log directory: %s", e)
 
-    public_ips = {ip for ip in all_ips if not is_private_ip(ip)}
-    log.info("Scraped %d unique public IPs from node logs", len(public_ips))
-    return public_ips
+    return {ip for ip in ips if not is_private_ip(ip)}
 
 
 def geolocate_ips(ips):
@@ -140,23 +159,23 @@ def geolocate_ips(ips):
 
 
 def index_peers(conn):
-    """Scrape peer IPs from logs and geolocate them."""
-    ips = scrape_peer_ips()
+    """Refresh peer liveness from NEW node-log activity and geolocate first-seen peers.
+    Only IPs appearing in fresh log output get last_seen bumped, giving real online/offline aging."""
+    ips = scrape_new_peer_ips()
     if not ips:
         return 0
 
-    # Find IPs not yet in the database or not seen recently
+    # Split into peers we already track vs. brand-new IPs to geolocate
     with conn.cursor() as cur:
         cur.execute("SELECT ip FROM peers")
         known_ips = {row[0] for row in cur.fetchall()}
 
     new_ips = ips - known_ips
-    # Update last_seen for all known IPs we still see
+    # Bump last_seen only for peers actually observed in this log window (one batched UPDATE)
     seen_ips = ips & known_ips
     if seen_ips:
         with conn.cursor() as cur:
-            for ip in seen_ips:
-                cur.execute("UPDATE peers SET last_seen = NOW() WHERE ip = %s", (ip,))
+            cur.execute("UPDATE peers SET last_seen = NOW() WHERE ip = ANY(%s)", (list(seen_ips),))
 
     # Geolocate new IPs
     if new_ips:
@@ -179,9 +198,9 @@ def index_peers(conn):
                      result.get("city"), result.get("isp"),
                      ip in BOOTSTRAP_IPS),
                 )
-        log.info("Geolocated %d new peer IPs", len(new_ips))
+        log.info("Geolocated %d new peer IPs (%d active in window)", len(new_ips), len(seen_ips))
     else:
-        log.info("No new peer IPs to geolocate (updated %d last_seen)", len(seen_ips))
+        log.info("Peer liveness: %d active in last log window", len(seen_ips))
 
     return len(new_ips)
 
@@ -282,6 +301,17 @@ def ensure_tables(conn):
             "CREATE INDEX IF NOT EXISTS idx_blocks_height ON blocks (height DESC)",
             "CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks (block_hash)",
             "CREATE INDEX IF NOT EXISTS idx_block_events_height ON block_events (height DESC)",
+            # PERF-1: block_content is scanned/sorted by height and slot constantly
+            "CREATE INDEX IF NOT EXISTS idx_block_content_height ON block_content (height DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_block_content_slot ON block_content (slot DESC)",
+            # PERF-2: every peers query filters/sorts on these
+            "CREATE INDEX IF NOT EXISTS idx_peers_last_seen ON peers (last_seen DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_peers_country ON peers (country)",
+            "CREATE INDEX IF NOT EXISTS idx_peers_is_bootstrap ON peers (is_bootstrap)",
+            # hot time-window + lookup paths
+            "CREATE INDEX IF NOT EXISTS idx_consensus_block_height ON consensus_snapshots (block_height)",
+            "CREATE INDEX IF NOT EXISTS idx_faucet_logs_session ON faucet_logs (session_id)",
+            "CREATE INDEX IF NOT EXISTS idx_faucet_logs_ts ON faucet_logs (ts DESC)",
         ]:
             try:
                 cur.execute(stmt)
@@ -308,15 +338,27 @@ def index_consensus(conn):
              data["lib"], data["tip"], data["mode"]),
         )
 
-        # Track new block events with block time calculation
+        # Track new block events. When >1 block lands between polls, record one event per
+        # skipped height with the time split evenly, so production count and block_time stay
+        # accurate instead of collapsing N blocks into one inflated event (LOG-3).
         if last_height is not None and height > last_height:
-            block_time_ms = int((now - last_height_ts).total_seconds() * 1000)
-            # Record each new height (may skip some if multiple blocks in one poll)
-            cur.execute(
-                """INSERT INTO block_events (ts, height, tip_hash, block_time_ms)
-                   VALUES (%s, %s, %s, %s)""",
-                (now, height, data["tip"], block_time_ms),
-            )
+            delta = height - last_height
+            total_ms = int((now - last_height_ts).total_seconds() * 1000)
+            if delta <= 10:
+                per_block_ms = max(1, total_ms // delta)
+                for h in range(last_height + 1, height + 1):
+                    cur.execute(
+                        """INSERT INTO block_events (ts, height, tip_hash, block_time_ms)
+                           VALUES (%s, %s, %s, %s)""",
+                        (now, h, data["tip"], per_block_ms),
+                    )
+            else:
+                # Large jump (catch-up/backfill) — single event, no bogus block_time
+                cur.execute(
+                    """INSERT INTO block_events (ts, height, tip_hash, block_time_ms)
+                       VALUES (%s, %s, %s, %s)""",
+                    (now, height, data["tip"], None),
+                )
 
         if last_height is None or height > last_height:
             last_height = height
@@ -354,24 +396,26 @@ def index_blocks(conn, consensus_data):
     inserted = 0
     orphaned = 0
 
-    with conn.cursor() as cur:
-        for i, block_hash in enumerate(headers):
-            estimated_height = height - i
+    pairs = [(height - i, h) for i, h in enumerate(headers)]
+    heights = [h for h, _ in pairs]
 
-            # Check if this height already has a different hash (reorg = orphan)
-            cur.execute(
-                "SELECT block_hash FROM blocks WHERE height = %s AND block_hash != %s LIMIT 1",
-                (estimated_height, block_hash),
-            )
-            old = cur.fetchone()
-            if old:
-                # Mark the old block at this height as orphaned
-                cur.execute(
-                    "UPDATE blocks SET is_orphaned = TRUE WHERE height = %s AND block_hash = %s",
-                    (estimated_height, old[0]),
-                )
-                orphaned += 1
-                log("orphan detected: height=%d old=%s new=%s", estimated_height, old[0][:16], block_hash[:16])
+    with conn.cursor() as cur:
+        # One query for all existing hashes at these heights instead of a SELECT per header (PERF-6).
+        cur.execute("SELECT height, block_hash FROM blocks WHERE height = ANY(%s)", (heights,))
+        existing: dict = {}
+        for h, bh in cur.fetchall():
+            existing.setdefault(h, []).append(bh)
+
+        for estimated_height, block_hash in pairs:
+            # A different hash already recorded at this height means a reorg — orphan it.
+            for old_hash in existing.get(estimated_height, []):
+                if old_hash != block_hash:
+                    cur.execute(
+                        "UPDATE blocks SET is_orphaned = TRUE WHERE height = %s AND block_hash = %s",
+                        (estimated_height, old_hash),
+                    )
+                    orphaned += 1
+                    log.info("orphan detected: height=%d old=%s new=%s", estimated_height, old_hash[:16], block_hash[:16])
 
             cur.execute(
                 """INSERT INTO blocks (block_hash, height)
@@ -383,7 +427,7 @@ def index_blocks(conn, consensus_data):
                 inserted += 1
 
     if orphaned:
-        log("reorg: %d orphaned blocks detected", orphaned)
+        log.info("reorg: %d orphaned blocks detected", orphaned)
     return inserted
 
 
@@ -475,7 +519,7 @@ def update_hourly_stats(conn):
                     MIN(height) AS height_start,
                     MAX(height) AS height_end
                 FROM block_events
-                WHERE ts > NOW() - INTERVAL '2 hours'
+                WHERE ts >= time_bucket('1 hour', NOW() - INTERVAL '2 hours')
                 GROUP BY bucket
             ) b
             LEFT JOIN (
@@ -484,7 +528,7 @@ def update_hourly_stats(conn):
                     AVG(n_peers) AS avg_peers,
                     AVG(n_connections) AS avg_connections
                 FROM network_snapshots
-                WHERE ts > NOW() - INTERVAL '2 hours'
+                WHERE ts >= time_bucket('1 hour', NOW() - INTERVAL '2 hours')
                 GROUP BY bucket
             ) n ON b.bucket = n.bucket
             ON CONFLICT (bucket) DO UPDATE SET
@@ -518,8 +562,9 @@ def main():
             if cycle % 3 == 0:
                 new_blocks = index_blocks(conn, consensus)
 
-            # Peer geolocation every 100th cycle (~5min at 3s poll)
-            if cycle % 100 == 0:
+            # Peer liveness + geolocation every 10th cycle (~30s at 3s poll). Cheap now that we
+            # only read newly-appended log bytes; ip-api is only hit for genuinely new IPs.
+            if cycle % 10 == 0:
                 try:
                     new_peers = index_peers(conn)
                     if new_peers:

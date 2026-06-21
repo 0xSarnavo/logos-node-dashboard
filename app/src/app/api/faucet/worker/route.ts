@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { faucetEnabled, faucetDisabled } from "@/lib/api";
+import { shortKey } from "@/lib/wallets";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ let workerMaxGrants = 0;
 let workerKeyIdx = 0;
 let workerGrantCount = 0;
 let workerLastHashes: Record<string, string> = {};
+let workerBusy = false;
 let schemaReady = false;
 
 // Ensure newer columns exist (tables were created before latency tracking).
@@ -89,14 +92,20 @@ async function dripOnce(key: string, sessionId: number) {
 }
 
 async function workerCycle() {
+  if (workerBusy) return; // previous drip still in flight — skip this tick (LOG-6: no overlap)
   if (!workerSessionId || workerKeys.length === 0) return;
   if (workerMaxGrants > 0 && workerGrantCount >= workerMaxGrants) {
     stopWorker();
     return;
   }
-  const key = workerKeys[workerKeyIdx % workerKeys.length];
-  await dripOnce(key, workerSessionId);
-  workerKeyIdx++;
+  workerBusy = true;
+  try {
+    const key = workerKeys[workerKeyIdx % workerKeys.length];
+    await dripOnce(key, workerSessionId);
+    workerKeyIdx++;
+  } finally {
+    workerBusy = false;
+  }
 }
 
 async function stopWorker() {
@@ -116,6 +125,7 @@ async function stopWorker() {
 
 // POST — start/stop background worker
 export async function POST(req: NextRequest) {
+  if (!faucetEnabled()) return faucetDisabled();
   const body = await req.json();
 
   if (body.action === "start") {
@@ -223,7 +233,7 @@ export async function GET() {
     running: isRunning,
     session_id: workerSessionId,
     session,
-    keys: workerKeys.map(k => k.slice(0, 8) + "…" + k.slice(-4)),
+    keys: workerKeys.map(shortKey),
     gap: workerGap,
     max_grants: workerMaxGrants,
     grant_count: workerGrantCount,

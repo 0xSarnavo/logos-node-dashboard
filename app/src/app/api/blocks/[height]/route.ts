@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError, parseIntParam } from "@/lib/api";
 import pool from "@/lib/db";
 import { fetchNode } from "@/lib/node";
 
@@ -56,7 +57,8 @@ async function getBlockContent(blockHash: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { height: string } }) {
-  const height = parseInt(params.height);
+  const height = parseIntParam(params.height);
+  if (height === null) return NextResponse.json({ error: "Invalid block height" }, { status: 400 });
 
   try {
     const [blockRes, eventRes, prevRes, nextRes, nodeInfo, nearbyRes, snapshotRes] = await Promise.all([
@@ -76,7 +78,7 @@ export async function GET(_req: NextRequest, { params }: { params: { height: str
         SELECT block_height, slot, lib_slot, mode
         FROM consensus_snapshots
         WHERE block_height >= $1
-        ORDER BY ts ASC LIMIT 1`, [height]),
+        ORDER BY block_height ASC, ts ASC LIMIT 1`, [height]),
     ]);
 
     if (!blockRes.rows.length) {
@@ -141,7 +143,7 @@ export async function GET(_req: NextRequest, { params }: { params: { height: str
       nearby_blocks: nearbyRes.rows,
       duplicates_at_height: allAtHeight.length > 1 ? allAtHeight.length : 0,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }

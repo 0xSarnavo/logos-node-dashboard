@@ -5,6 +5,8 @@ import { useLive } from "@/components/useLive";
 import Chart from "@/components/Chart";
 import { SkeletonRows } from "@/components/Skeleton";
 import { InfoTip } from "@/components/InfoTip";
+import { StatusBadge } from "@/components/StatusBadge";
+import { timeAgo, truncHash } from "@/lib/format";
 import { opAccent } from "@/lib/tx";
 import SlotStrip from "@/components/SlotStrip";
 
@@ -41,26 +43,6 @@ function GistCard({ href, icon, title, stat, statSub, desc }: {
   );
 }
 
-function truncHash(h: string) {
-  if (!h || h.length < 20) return h || "—";
-  return h.slice(0, 8) + "…" + h.slice(-6);
-}
-
-function timeAgo(ts: string) {
-  if (!ts) return "—";
-  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-  if (!Number.isFinite(s)) return "—";
-  if (s < 5) return "just now";
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h`;
-  return `${Math.floor(s / 86400)}d`;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  return <span className={`badge badge-${status}`}>{status}</span>;
-}
-
 const I = {
   block: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>,
   tx: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>,
@@ -78,16 +60,12 @@ export default function Home() {
   const { data: txData } = useLive<any>("/api/transactions?limit=20", 5000);
   const blocks = blocksData?.blocks ?? [];
 
-  const prevMaxHeight = useRef<number>(0);
+  // Flash rows for blocks newer than the previous poll's max height. Single ref updated after
+  // each render so new arrivals highlight on every poll, not just the first batch (LOG-9).
+  const prevMaxHeight = useRef<number | null>(null);
   const currentMax = blocks.length > 0 ? Math.max(...blocks.map((b: any) => b.height ?? 0)) : 0;
-  useEffect(() => { if (currentMax > 0 && prevMaxHeight.current === 0) prevMaxHeight.current = currentMax; }, [currentMax]);
-  const isNewRow = (height: number) => height > prevMaxHeight.current && prevMaxHeight.current > 0;
-  useEffect(() => {
-    if (currentMax > prevMaxHeight.current) {
-      const timer = setTimeout(() => { prevMaxHeight.current = currentMax; }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [currentMax]);
+  const isNewRow = (height: number) => prevMaxHeight.current !== null && height > prevMaxHeight.current;
+  useEffect(() => { if (currentMax > 0) prevMaxHeight.current = currentMax; }, [currentMax]);
 
   return (
     <div className="px-6 py-5 mx-auto pb-10">
@@ -158,7 +136,7 @@ export default function Home() {
         <div className="flex items-center justify-between px-5 py-3">
           <div className="flex items-center gap-2.5">
             <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <h2 className="text-[13px] font-semibold text-white">Chain activity</h2>
+            <h2 className="text-[13px] font-semibold text-white flex items-center">Chain activity<InfoTip text="A live view of your node's chain: the slot-occupancy strip and how many blocks were produced recently." /></h2>
           </div>
           <Link href="/node" className="text-[11px] text-zinc-500 hover:text-white transition-colors">My Node →</Link>
         </div>
@@ -171,7 +149,7 @@ export default function Home() {
         {/* Recent Blocks */}
         <div className="p-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[9px] text-zinc-600 uppercase tracking-widest font-medium">Recent Blocks · per 5 min</p>
+            <p className="text-[9px] text-zinc-600 uppercase tracking-widest font-medium flex items-center">Recent Blocks · per 5 min<InfoTip text="Blocks produced in each 5-minute bucket over the last hour — a quick read on production rate." /></p>
             <span className="text-[10px] text-zinc-600 tabular-nums">{chain?.blocks_1h ?? "—"} in last hour</span>
           </div>
           <Chart data={bpmHistory ?? []} type="bar" color="#a1a1aa" height={140} />
@@ -185,7 +163,7 @@ export default function Home() {
           <div className="flex items-center justify-between px-5 py-3">
             <div className="flex items-center gap-2.5">
               <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-              <h2 className="text-[13px] font-semibold text-white">Latest blocks</h2>
+              <h2 className="text-[13px] font-semibold text-white flex items-center">Latest blocks<InfoTip text="Most recent blocks, newest first. Status shows whether each block is finalized (final) or still pending finality." /></h2>
               <span className="flex items-center gap-1.5 text-[10px] text-zinc-500"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 live-dot" /> Live</span>
             </div>
             <Link href="/blocks" className="text-[11px] text-zinc-500 hover:text-white transition-colors">View all →</Link>
@@ -221,7 +199,7 @@ export default function Home() {
           <div className="flex items-center justify-between px-5 py-3">
             <div className="flex items-center gap-2.5">
               <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
-              <h2 className="text-[13px] font-semibold text-white">Latest transactions</h2>
+              <h2 className="text-[13px] font-semibold text-white flex items-center">Latest transactions<InfoTip text="Most recent decoded transactions (transfers and channel inscriptions), newest first, with their block and confirmation status." /></h2>
               <span className="flex items-center gap-1.5 text-[10px] text-zinc-500"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500/70 live-dot" /> Live</span>
             </div>
             <Link href="/transactions" className="text-[11px] text-zinc-500 hover:text-white transition-colors">View all →</Link>

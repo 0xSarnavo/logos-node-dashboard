@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
 import { fetchNode } from "@/lib/node";
 
@@ -18,8 +19,9 @@ export async function GET(req: NextRequest) {
     const tipSlot = nodeInfo?.slot ?? 0;
     const libSlot = nodeInfo?.lib_slot ?? 0;
     const slotGap = tipSlot - libSlot;
-    const estimatedLibHeight = Math.max(0, tipHeight - Math.ceil(slotGap / 18));
+    // One consistent slots-per-block ratio for every height<->slot conversion (LOG-4).
     const slotsPerHeight = tipHeight > 0 ? tipSlot / tipHeight : 18;
+    const estimatedLibHeight = Math.max(0, tipHeight - Math.ceil(slotGap / slotsPerHeight));
 
     // Build WHERE clauses
     const conditions: string[] = ["1=1"];
@@ -67,7 +69,8 @@ export async function GET(req: NextRequest) {
         [...params, limit, offset]
       ),
       pool.query(
-        `SELECT COUNT(*) FROM blocks b LEFT JOIN block_events be ON b.height = be.height WHERE ${where2}`,
+        // COUNT DISTINCT so a block joining multiple block_events rows isn't double-counted (PERF-4)
+        `SELECT COUNT(DISTINCT b.block_hash) FROM blocks b LEFT JOIN block_events be ON b.height = be.height WHERE ${where2}`,
         params
       ),
     ]);
@@ -99,7 +102,7 @@ export async function GET(req: NextRequest) {
       lib_height: estimatedLibHeight,
       lib_slot: libSlot,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return apiError(e);
   }
 }
