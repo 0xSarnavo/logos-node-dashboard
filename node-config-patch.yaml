@@ -1,0 +1,27 @@
+# Paste/merge these fields into your logos node's user_config.yaml
+# to enable telemetry export to the monitoring stack.
+#
+# The node already supports loki, otlp, and metrics — we just enable them.
+
+tracing:
+  logger:
+    file:
+      directory: .
+      prefix: '1781846271'
+    # Send logs to Loki via the OTel collector
+    loki: null  # OR set directly: "http://localhost:3100/loki/api/v1/push"
+    gelf: null
+    # Send traces + metrics via OTLP to the collector
+    otlp:
+      endpoint: "http://localhost:4317"
+      protocol: grpc
+    stdout: true
+    stderr: false
+  tracing: Opentelemetry
+  filter: None
+  # Enable Prometheus-compatible metrics endpoint
+  metrics:
+    host: 0.0.0.0
+    port: 9091
+  console: None
+  level: DEBUG

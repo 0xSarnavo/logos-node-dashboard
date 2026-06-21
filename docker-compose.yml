@@ -1,0 +1,210 @@
+services:
+  # --- OpenTelemetry Collector ---
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    container_name: logos-otel-collector
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    expose:
+      - "8889"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    networks:
+      - logos-monitor
+
+  # --- Prometheus ---
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: logos-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.listen-address=0.0.0.0:9090"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    networks:
+      - logos-monitor
+
+  # --- Loki (log aggregation) ---
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: logos-loki
+    restart: unless-stopped
+    volumes:
+      - ./loki/config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    expose:
+      - "3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    networks:
+      - logos-monitor
+
+  # --- Tempo (tracing) ---
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: logos-tempo
+    restart: unless-stopped
+    volumes:
+      - ./tempo/config.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    expose:
+      - "3200"
+      - "4317"
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    networks:
+      - logos-monitor
+
+  # --- Node Exporter (system metrics) ---
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: logos-node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--no-collector.filesystem"
+      - "--collector.cpu"
+      - "--collector.meminfo"
+      - "--collector.diskstats"
+      - "--collector.netdev"
+      - "--collector.loadavg"
+    expose:
+      - "9100"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    networks:
+      - logos-monitor
+
+  # --- TimescaleDB (blockchain analytics) ---
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: logos-timescaledb
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=logos
+      - POSTGRES_PASSWORD=logos_internal_db
+      - POSTGRES_DB=logos
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./indexer/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    expose:
+      - "5432"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    networks:
+      - logos-monitor
+
+  # --- Indexer (polls node API → TimescaleDB) ---
+  indexer:
+    build: ./indexer
+    container_name: logos-indexer
+    restart: unless-stopped
+    environment:
+      - NODE_API=http://host.docker.internal:8080
+      - DB_DSN=postgresql://logos:logos_internal_db@timescaledb:5432/logos
+      - POLL_INTERVAL=3
+      - NODE_LOG_DIR=/node-logs
+      - SIDECAR_API=http://sidecar:8081
+    volumes:
+      - /Users/sarnavo/Development/logos-node:/node-logs:ro
+    depends_on:
+      - timescaledb
+      - sidecar
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    networks:
+      - logos-monitor
+
+  # --- Sidecar (reads node's RocksDB for block content) ---
+  sidecar:
+    build: ./sidecar
+    container_name: logos-sidecar
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/node-data/state/db
+      - SIDECAR_PORT=8081
+    volumes:
+      - /Users/sarnavo/Development/logos-node/state:/node-data/state:ro
+    expose:
+      - "8081"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    networks:
+      - logos-monitor
+
+  # --- Logos Explorer (custom UI) ---
+  explorer:
+    build: ./app
+    container_name: logos-explorer
+    restart: unless-stopped
+    environment:
+      - NODE_API=http://host.docker.internal:8080
+      - SIDECAR_API=http://sidecar:8081
+      - DB_HOST=timescaledb
+      - DB_PORT=5432
+      - DB_NAME=logos
+      - DB_USER=logos
+      - DB_PASSWORD=logos_internal_db
+    ports:
+      - "127.0.0.1:3333:3333"
+    depends_on:
+      - timescaledb
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    networks:
+      - logos-monitor
+
+networks:
+  logos-monitor:
+    driver: bridge
+    internal: false
+
+volumes:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  timescale-data:

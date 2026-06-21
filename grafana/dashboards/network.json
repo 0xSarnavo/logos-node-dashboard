@@ -1,0 +1,219 @@
+{
+  "uid": "logos-network",
+  "title": "Logos Explorer — Network",
+  "description": "P2P network: peers, connections, gossipsub, and connection health",
+  "tags": ["logos", "explorer", "network"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "style": "dark",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "15s",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "NETWORK STATUS",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "title": "PEERS",
+      "description": "Discovered peers on the P2P network.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "datasource": "TimescaleDB",
+      "targets": [{ "rawSql": "SELECT ts AS time, n_peers AS value FROM network_snapshots ORDER BY ts DESC LIMIT 1", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#ffffff" } } },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2,
+      "title": "CONNECTIONS",
+      "description": "Active connections to remote peers.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "datasource": "TimescaleDB",
+      "targets": [{ "rawSql": "SELECT ts AS time, n_connections AS value FROM network_snapshots ORDER BY ts DESC LIMIT 1", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#cccccc" } } },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3,
+      "title": "PENDING",
+      "description": "Connections in handshake phase. High = possible firewall/NAT issues.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "datasource": "TimescaleDB",
+      "targets": [{ "rawSql": "SELECT ts AS time, n_pending_connections AS value FROM network_snapshots ORDER BY ts DESC LIMIT 1", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#888888" } } },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4,
+      "title": "CONN RATIO",
+      "description": "Connections / Peers. Near 1.0 = connected to most discovered peers.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "datasource": "TimescaleDB",
+      "targets": [{ "rawSql": "SELECT ts AS time, CASE WHEN n_peers > 0 THEN ROUND(n_connections::numeric / n_peers, 2) ELSE 0 END AS value FROM network_snapshots ORDER BY ts DESC LIMIT 1", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#cccccc" }, "decimals": 2 } },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 5,
+      "title": "PEER ID",
+      "description": "This node's P2P identifier on the network.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
+      "datasource": "TimescaleDB",
+      "targets": [{ "rawSql": "SELECT ts AS time, LEFT(peer_id, 20) || '...' AS value FROM network_snapshots ORDER BY ts DESC LIMIT 1", "format": "table", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "#666666" } } },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "CONNECTIVITY HISTORY",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "title": "Peers & Connections Over Time",
+      "description": "Historical peer/connection count. Correlate drops with restarts or network events.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 7 },
+      "datasource": "TimescaleDB",
+      "targets": [
+        { "rawSql": "SELECT time_bucket('1 minute', ts) AS time, AVG(n_peers)::INT AS \"Peers\", AVG(n_connections)::INT AS \"Connections\", AVG(n_pending_connections)::INT AS \"Pending\" FROM network_snapshots WHERE $__timeFilter(ts) GROUP BY time ORDER BY time", "format": "time_series", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#ffffff" },
+          "custom": { "lineWidth": 2, "fillOpacity": 6, "drawStyle": "line", "showPoints": "never", "lineInterpolation": "smooth", "spanNulls": true }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Connections" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#888888" } }] },
+          { "matcher": { "id": "byName", "options": "Pending" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#444444" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 11,
+      "title": "Connection Ratio Over Time",
+      "description": "Connections/Peers ratio. Stable near 1.0 = good. Dropping = losing connectivity.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 7 },
+      "datasource": "TimescaleDB",
+      "targets": [{
+        "rawSql": "SELECT time_bucket('1 minute', ts) AS time, CASE WHEN AVG(n_peers) > 0 THEN ROUND((AVG(n_connections) / AVG(n_peers))::numeric, 2) ELSE 0 END AS \"Ratio\" FROM network_snapshots WHERE $__timeFilter(ts) GROUP BY time ORDER BY time",
+        "format": "time_series",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#cccccc" },
+          "custom": { "lineWidth": 2, "fillOpacity": 8, "drawStyle": "line", "showPoints": "never", "lineInterpolation": "smooth", "spanNulls": true },
+          "decimals": 2
+        }
+      },
+      "options": { "legend": { "displayMode": "hidden" }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "id": 300,
+      "type": "row",
+      "title": "GOSSIPSUB & PROTOCOL",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "title": "Gossipsub Mesh",
+      "description": "Peers in the gossipsub mesh overlay. Target: 6 (mesh_n from config).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "logos_network_gossipsub_mesh_peers", "legendFormat": "Mesh Peers", "refId": "A" },
+        { "expr": "logos_network_connected_peers_total", "legendFormat": "Total Peers", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#ffffff" },
+          "custom": { "lineWidth": 2, "fillOpacity": 8, "drawStyle": "line", "showPoints": "never", "lineInterpolation": "smooth" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Total Peers" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#666666" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "id": 21,
+      "title": "Gossipsub Messages",
+      "description": "Rate of gossipsub messages received and published per second.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(logos_network_gossipsub_messages_received_total[5m])", "legendFormat": "Received/s", "refId": "A" },
+        { "expr": "rate(logos_network_gossipsub_messages_published_total[5m])", "legendFormat": "Published/s", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#ffffff" },
+          "custom": { "lineWidth": 2, "fillOpacity": 8, "drawStyle": "line", "showPoints": "never", "lineInterpolation": "smooth" },
+          "unit": "ops"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Published/s" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#888888" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "id": 400,
+      "type": "row",
+      "title": "NETWORK ERRORS",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 30,
+          "title": "Connection Errors",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+          "datasource": "Prometheus",
+          "targets": [
+            { "expr": "rate(logos_network_dial_failures_total[5m])", "legendFormat": "Dial Failures/s", "refId": "A" },
+            { "expr": "rate(logos_network_timeout_total[5m])", "legendFormat": "Timeouts/s", "refId": "B" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "fixed", "fixedColor": "#999999" },
+              "custom": { "lineWidth": 2, "fillOpacity": 20, "drawStyle": "bars", "showPoints": "never" }
+            }
+          },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+        },
+        {
+          "id": 31,
+          "title": "Network Error Logs",
+          "type": "logs",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+          "datasource": "Loki",
+          "targets": [{ "expr": "{service=\"logos-node\"} |~ \"network|swarm|peer\" |= \"ERROR\"", "refId": "A" }],
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true }
+        }
+      ]
+    }
+  ]
+}

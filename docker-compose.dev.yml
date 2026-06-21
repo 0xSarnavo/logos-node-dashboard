@@ -1,0 +1,29 @@
+# Development override for the explorer (dashboard UI).
+# Mounts your local ./app source and runs `next dev`, so edits hot-reload in the
+# browser at http://localhost:3333 with NO image rebuild. It still joins the same
+# docker network, so it reaches timescaledb + the node exactly like production.
+#
+#   Start (foreground, shows logs):
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up explorer
+#   Start (background):
+#     docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d explorer
+#   Back to the production baked image:
+#     docker compose up -d explorer
+#
+# Note: node_modules and .next live in container-only volumes so the host's
+# macOS-built copies never leak into the Linux container (Next's native SWC binary
+# is platform-specific).
+services:
+  explorer:
+    image: logos-node-dashboard-explorer-dev   # separate tag so it never clobbers the prod image
+    build:
+      context: ./app
+      target: deps          # deps stage: full node_modules incl. devDeps + next CLI
+    command: npx next dev -p 3333 -H 0.0.0.0
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true   # reliable file-watching across the macOS↔Docker boundary
+    volumes:
+      - ./app:/app          # live source — edits hot-reload
+      - /app/node_modules   # keep the image's Linux node_modules
+      - /app/.next          # keep dev build cache in-container

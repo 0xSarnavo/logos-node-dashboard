@@ -1,0 +1,51 @@
+# ───── Secrets — NEVER commit ─────
+.env
+*.env
+!.env.example
+**/.env
+**/.env.local
+**/.env*.local
+
+# ───── Node / Next.js (app/) ─────
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+**/out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+.npm
+.eslintcache
+
+# ───── Python (indexer/ sidecar/) ─────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# ───── Docker named-volume data (local/ephemeral) ─────
+grafana-data/
+prometheus-data/
+loki-data/
+tempo-data/
+timescale-data/
+
+# ───── Logs / runtime ─────
+*.log
+logs/
+
+# ───── OS / editor / tooling ─────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+.claude/
+**/.claude/
