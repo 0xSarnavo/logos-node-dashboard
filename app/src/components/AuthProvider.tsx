@@ -6,7 +6,7 @@ interface AuthState {
   user: string | null;
   loading: boolean;
   refresh: () => Promise<void>;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string, remember?: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
@@ -33,12 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, remember = false) => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, remember }),
       });
       await refresh();
       return res.ok;

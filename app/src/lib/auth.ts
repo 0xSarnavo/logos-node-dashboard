@@ -11,7 +11,9 @@ const AUTH_PASS = process.env.DASH_AUTH_PASS || ""; // empty => login disabled u
 const SECRET = process.env.DASH_AUTH_SECRET || "insecure-dev-fallback-set-DASH_AUTH_SECRET";
 
 export const SESSION_COOKIE = "dash_session";
-const MAX_AGE_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const DAY = 24 * 60 * 60;
+export const SESSION_SHORT = 1 * DAY;   // default session length
+export const SESSION_LONG = 30 * DAY;   // "remember me"
 
 function base64url(input: string | Buffer): string {
   return Buffer.from(input).toString("base64url");
@@ -28,8 +30,8 @@ export function checkCredentials(username: string, password: string): boolean {
 }
 
 // Build a signed token: base64url(JSON.stringify({u, exp})) + "." + hex hmac of that payload.
-export function signSession(user: string): string {
-  const exp = Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS;
+export function signSession(user: string, ageSeconds: number = SESSION_SHORT): string {
+  const exp = Math.floor(Date.now() / 1000) + ageSeconds;
   const payload = base64url(JSON.stringify({ u: user, exp }));
   const sig = hmacHex(payload);
   return `${payload}.${sig}`;
@@ -56,14 +58,16 @@ export function verifySession(token: string | undefined | null): { u: string } |
   }
 }
 
-// Cookie attributes used when setting the session cookie.
-export const SESSION_COOKIE_OPTIONS = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  path: "/",
-  maxAge: MAX_AGE_SECONDS,
-  secure: false, // served over http for now
-};
+// Cookie attributes used when setting the session cookie (maxAge varies with "remember me").
+export function sessionCookieOptions(ageSeconds: number = SESSION_SHORT) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: ageSeconds,
+    secure: false, // served over http for now
+  };
+}
 
 // Read the session cookie (in a route/server context) and report auth state.
 export async function readAuth(): Promise<{ authed: boolean; user: string | null }> {

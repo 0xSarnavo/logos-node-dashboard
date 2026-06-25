@@ -4,7 +4,7 @@ import { useLive } from "@/components/useLive";
 import Chart from "@/components/Chart";
 import MultiChart from "@/components/MultiChart";
 import { truncHash } from "@/lib/format";
-import AuthGate from "@/components/AuthGate";
+import { useAuth } from "@/components/AuthProvider";
 
 function fmtDur(s: number) {
   if (s < 60) return `${s}s`;
@@ -39,10 +39,78 @@ function findGaps(times: number[], start: number, end: number, thresholdMs: numb
 }
 
 export default function FaucetPage() {
+  const { authed, loading } = useAuth();
+  if (loading) return <div className="min-h-[60vh]" />;
+  // Public visitors get a simple "paste key, get tokens" faucet; the operator gets the
+  // full faucet with automation, stats, time filter and gaps.
+  return authed ? <FaucetContent /> : <PublicFaucet />;
+}
+
+// Simple public faucet: paste a wallet key, relay one drip to the upstream Logos faucet.
+function PublicFaucet() {
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const claim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/faucet/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: key.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        setResult({ ok: true, msg: `Sent 1000 testnet tokens! tx ${truncHash(data.hash)}` });
+      } else {
+        setResult({ ok: false, msg: data.error || "Claim failed. Try again." });
+      }
+    } catch {
+      setResult({ ok: false, msg: "Request failed. Try again." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <AuthGate>
-      <FaucetContent />
-    </AuthGate>
+    <div className="max-w-lg mx-auto px-4 py-16">
+      <div className="glass rounded-2xl p-6 sm:p-8 animate-in">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 live-dot" />
+          <h1 className="text-lg font-semibold text-white">Testnet Faucet</h1>
+        </div>
+        <p className="text-[13px] text-zinc-500 mb-5">
+          Paste your Logos wallet key to receive <span className="text-zinc-300">1000 testnet tokens</span>. One claim per minute.
+        </p>
+        <form onSubmit={claim} className="space-y-3">
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="Wallet key (64-character hex)"
+            spellCheck={false}
+            autoComplete="off"
+            className="w-full bg-white/[0.03] border border-white/[0.07] rounded-lg px-3.5 py-2.5 text-[13px] text-white font-mono placeholder:text-zinc-600 focus:outline-none focus:border-white/[0.15]"
+          />
+          <button
+            type="submit"
+            disabled={busy || !key.trim()}
+            className="w-full py-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-[13px] text-emerald-300 font-medium hover:bg-emerald-500/25 transition-colors disabled:opacity-40"
+          >
+            {busy ? "Sending…" : "Get tokens"}
+          </button>
+        </form>
+        {result && (
+          <p className={`mt-4 text-[12px] ${result.ok ? "text-emerald-400" : "text-rose-400/90"}`}>{result.msg}</p>
+        )}
+        <p className="mt-6 pt-4 border-t border-white/[0.05] text-[11px] text-zinc-600">
+          Operator? Sign in (profile icon, top-right) for the full faucet with automation, live stats, and gap analysis.
+        </p>
+      </div>
+    </div>
   );
 }
 

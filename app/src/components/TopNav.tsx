@@ -10,10 +10,10 @@ const PUBLIC_LINKS = [
   { href: "/blocks", label: "Blocks" },
   { href: "/transactions", label: "Transactions" },
   { href: "/peers", label: "Peers" },
+  { href: "/faucet", label: "Faucet" },
 ];
 const PRIVATE_LINKS = [
   { href: "/node", label: "My Node" },
-  { href: "/faucet", label: "Faucet" },
   { href: "/apis", label: "APIs" },
 ];
 
@@ -28,6 +28,7 @@ export default function TopNav() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
+  const [remember, setRemember] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -49,7 +50,7 @@ export default function TopNav() {
     if (signingIn) return;
     setSigningIn(true);
     setLoginError("");
-    const ok = await login(loginUser.trim(), loginPass);
+    const ok = await login(loginUser.trim(), loginPass, remember);
     setSigningIn(false);
     if (ok) {
       setLoginUser("");
@@ -212,6 +213,15 @@ export default function TopNav() {
                   autoComplete="current-password"
                   className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-[12px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-white/[0.12]"
                 />
+                <label className="flex items-center gap-2 text-[11px] text-zinc-400 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    className="accent-blue-500 w-3.5 h-3.5"
+                  />
+                  Remember me for 30 days
+                </label>
                 {loginError && <p className="text-[11px] text-rose-400/80">{loginError}</p>}
                 <button
                   type="submit"

@@ -15,6 +15,8 @@ const TTL = 10 * 60 * 1000;
 export async function GET() {
   try {
     const { authed } = await readAuth();
+    // Hide this node entirely from public viewers — no identity, location, or peer_id.
+    if (!authed) return NextResponse.json({});
 
     if (!cached || Date.now() - cachedAt >= TTL) {
       const [geo, netInfo] = await Promise.all([
@@ -44,8 +46,7 @@ export async function GET() {
       cachedAt = Date.now();
     }
 
-    // Hide the raw IP from public viewers; peer_id + geo stay (peer_id is meant to be public).
-    return NextResponse.json({ ...cached, ip: authed ? cached.ip : null });
+    return NextResponse.json(cached);
   } catch (e) {
     return apiError(e);
   }
