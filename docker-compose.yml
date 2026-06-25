@@ -229,7 +229,9 @@ services:
     container_name: logos-caddy
     restart: unless-stopped
     ports:
-      - "8443:8443"      # public — open VCN ingress + host firewall for TCP 8443
+      - "80:80"          # Let's Encrypt HTTP-01 challenge + http->https redirect
+      - "443:443"        # HTTPS for the DuckDNS domain (auto Let's Encrypt cert)
+      - "8443:8443"      # legacy plain-HTTP access (app auth still applies)
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
