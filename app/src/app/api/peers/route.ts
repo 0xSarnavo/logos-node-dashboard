@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
+import { readAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const { authed } = await readAuth();
     const [peersRes, countryRes, netRes] = await Promise.all([
       pool.query("SELECT * FROM peers WHERE lat IS NOT NULL ORDER BY last_seen DESC"),
       pool.query(`
@@ -18,12 +20,20 @@ export async function GET() {
       // Node's live connection counts (latest snapshot) — "connected right now"
       pool.query("SELECT n_peers, n_connections FROM network_snapshots ORDER BY ts DESC LIMIT 1"),
     ]);
+    // Public viewers don't get peer IP/address identifiers. Replace `ip` with a stable
+    // anonymized token so the client still has a unique row key, and keep the state/status
+    // fields (last_seen/first_seen/is_bootstrap/geo) intact.
+    const peers = authed
+      ? peersRes.rows
+      : peersRes.rows.map((p: any, i: number) => ({ ...p, ip: `peer-${i}` }));
     return NextResponse.json({
-      peers: peersRes.rows,
+      peers,
       countries: countryRes.rows,
       total: peersRes.rows.length,
       connected_peers: netRes.rows[0]?.n_peers ?? null,
       connected: netRes.rows[0]?.n_connections ?? null,
+      // Whether IP/address fields are real (authed) or anonymized (public).
+      authed,
       // Server wall-clock, so the page's staleness safety-net doesn't depend on the browser clock.
       server_now: Date.now(),
     });

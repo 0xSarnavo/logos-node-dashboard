@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { timeAgo, truncHash } from "@/lib/format";
 import { opAccent } from "@/lib/tx";
 import SlotStrip from "@/components/SlotStrip";
+import { useAuth } from "@/components/AuthProvider";
 
 function Stat({ icon, label, value, sub, tip }: {
   icon: React.ReactNode; label: string; value: string; sub?: string; tip: string;
@@ -52,8 +53,10 @@ const I = {
 };
 
 export default function Home() {
+  const { authed } = useAuth();
   const { data: chain } = useLive<any>("/api/chain", 2000);
-  const { data: walletData } = useLive<any>("/api/wallet", 10000);
+  // Wallet data is operator-private — only fetch it (and show wallet widgets) when signed in.
+  const { data: walletData } = useLive<any>(authed ? "/api/wallet" : null, 10000);
   const { data: blocksData } = useLive<any>("/api/blocks?limit=30", 2000);
   const { data: bpmHistory } = useLive<any[]>("/api/chain/history?metric=blocks_per_5m", 10000);
   const { data: peersData } = useLive<any>("/api/peers", 30000);
@@ -70,10 +73,12 @@ export default function Home() {
   return (
     <div className="px-6 py-5 mx-auto pb-10">
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 mb-4">
-        <Stat tip="Total balance across all tracked wallets on this node."
-          icon={<svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M21 12V7H5a2 2 0 010-4h14v4m0 5v5a1 1 0 01-1 1H5a2 2 0 01-2-2V6"/><circle cx="18" cy="12" r="1"/></svg>}
-          label="Wallet Balance" value={walletData?.total_balance != null ? walletData.total_balance.toLocaleString() : "---"} sub={`${walletData?.wallets?.length ?? 0} wallets`} />
+      <div className={`grid grid-cols-2 md:grid-cols-3 ${authed ? "lg:grid-cols-7" : "lg:grid-cols-6"} gap-3 mb-4`}>
+        {authed && (
+          <Stat tip="Total balance across all tracked wallets on this node."
+            icon={<svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M21 12V7H5a2 2 0 010-4h14v4m0 5v5a1 1 0 01-1 1H5a2 2 0 01-2-2V6"/><circle cx="18" cy="12" r="1"/></svg>}
+            label="Wallet Balance" value={walletData?.total_balance != null ? walletData.total_balance.toLocaleString() : "---"} sub={`${walletData?.wallets?.length ?? 0} wallets`} />
+        )}
         <Stat tip="The latest slot number in the consensus timeline. Slots advance at a fixed rate regardless of block production."
           icon={<svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"/></svg>}
           label="Tip Slot" value={chain?.slot?.toLocaleString() ?? "—"} sub="Latest" />
@@ -113,7 +118,7 @@ export default function Home() {
         <h2 className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">Explore</h2>
         <span className="text-[10px] text-zinc-600">jump into any section</span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+      <div className={`grid grid-cols-2 md:grid-cols-3 ${authed ? "lg:grid-cols-5" : "lg:grid-cols-3"} gap-3 mb-6`}>
         <GistCard href="/blocks" icon={I.block} title="Blocks"
           stat={chain?.height?.toLocaleString() ?? "—"} statSub={`${chain?.avg_block_time ?? "—"}s avg · ${chain?.finality_lag ?? "—"} finality lag`}
           desc="Block explorer with time distribution and the live slot strip." />
@@ -123,12 +128,16 @@ export default function Home() {
         <GistCard href="/peers" icon={I.peers} title="Peers"
           stat={peersData?.total?.toLocaleString() ?? "—"} statSub={`${peersData?.countries?.length ?? "—"} countries`}
           desc="Rotating globe, leaderboards, and network health." />
-        <GistCard href="/node" icon={I.node} title="My Node"
-          stat={chain?.sync_percent != null ? `${Math.min(100, chain.sync_percent).toFixed(0)}%` : "—"} statSub={`${chain?.mode ?? "—"} · ${chain?.caught_up ? "in sync" : "syncing"}`}
-          desc="Sync, health, charts, wallets, and node identity." />
-        <GistCard href="/faucet" icon={I.faucet} title="Faucet"
-          stat={walletData?.total_balance != null ? walletData.total_balance.toLocaleString() : "—"} statSub={`${walletData?.wallets?.length ?? 0} wallets`}
-          desc="Drip testnet tokens to your wallets, server-side." />
+        {authed && (
+          <GistCard href="/node" icon={I.node} title="My Node"
+            stat={chain?.sync_percent != null ? `${Math.min(100, chain.sync_percent).toFixed(0)}%` : "—"} statSub={`${chain?.mode ?? "—"} · ${chain?.caught_up ? "in sync" : "syncing"}`}
+            desc="Sync, health, charts, wallets, and node identity." />
+        )}
+        {authed && (
+          <GistCard href="/faucet" icon={I.faucet} title="Faucet"
+            stat={walletData?.total_balance != null ? walletData.total_balance.toLocaleString() : "—"} statSub={`${walletData?.wallets?.length ?? 0} wallets`}
+            desc="Drip testnet tokens to your wallets, server-side." />
+        )}
       </div>
 
       {/* Chain activity — full-width section, above */}
@@ -138,7 +147,7 @@ export default function Home() {
             <svg className="w-4 h-4 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             <h2 className="text-[13px] font-semibold text-white flex items-center">Chain activity<InfoTip text="A live view of your node's chain: the slot-occupancy strip and how many blocks were produced recently." /></h2>
           </div>
-          <Link href="/node" className="text-[11px] text-zinc-500 hover:text-white transition-colors">My Node →</Link>
+          {authed && <Link href="/node" className="text-[11px] text-zinc-500 hover:text-white transition-colors">My Node →</Link>}
         </div>
         <div className="glow-separator" />
         {/* Live Slots */}

@@ -1,13 +1,17 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@/components/AuthProvider";
 
-const links = [
+// Links always visible vs. links that require sign-in (private operator views).
+const PUBLIC_LINKS = [
   { href: "/", label: "Home" },
   { href: "/blocks", label: "Blocks" },
   { href: "/transactions", label: "Transactions" },
   { href: "/peers", label: "Peers" },
+];
+const PRIVATE_LINKS = [
   { href: "/node", label: "My Node" },
   { href: "/faucet", label: "Faucet" },
   { href: "/apis", label: "APIs" },
@@ -16,8 +20,52 @@ const links = [
 export default function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { authed, user, login, logout } = useAuth();
   const [search, setSearch] = useState("");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  // Profile dropdown + login form state.
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  const links = authed ? [...PUBLIC_LINKS, ...PRIVATE_LINKS] : PUBLIC_LINKS;
+
+  // Close the dropdown on outside click.
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [profileOpen]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (signingIn) return;
+    setSigningIn(true);
+    setLoginError("");
+    const ok = await login(loginUser.trim(), loginPass);
+    setSigningIn(false);
+    if (ok) {
+      setLoginUser("");
+      setLoginPass("");
+      setProfileOpen(false);
+    } else {
+      setLoginError("Invalid username or password");
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setProfileOpen(false);
+    // Leave any private page the user can no longer see.
+    if (PRIVATE_LINKS.some((l) => pathname.startsWith(l.href))) router.push("/");
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem("theme") as "dark" | "light" | null;
@@ -114,6 +162,69 @@ export default function TopNav() {
           />
         </div>
       </form>
+
+      {/* Profile / sign-in */}
+      <div className="relative ml-1" ref={profileRef}>
+        <button
+          onClick={() => setProfileOpen((o) => !o)}
+          className={`p-1.5 rounded-md transition-all duration-200 ${
+            profileOpen || authed ? "text-zinc-300 bg-white/[0.05]" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.05]"
+          }`}
+          title={authed ? `Signed in as ${user}` : "Sign in"}
+          aria-label={authed ? "Account" : "Sign in"}
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          </svg>
+        </button>
+
+        {profileOpen && (
+          <div className="absolute right-0 top-full mt-2 w-64 glass-strong rounded-xl p-3 shadow-xl z-50">
+            {authed ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">Signed in as</p>
+                  <p className="text-[13px] text-white font-medium mt-0.5 break-all">{user}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full py-1.5 rounded-md border border-white/[0.08] text-[12px] text-zinc-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleLogin} className="space-y-2.5">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium mb-1">Sign in</p>
+                <input
+                  type="text"
+                  value={loginUser}
+                  onChange={(e) => setLoginUser(e.target.value)}
+                  placeholder="Username"
+                  autoComplete="username"
+                  className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-[12px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-white/[0.12]"
+                />
+                <input
+                  type="password"
+                  value={loginPass}
+                  onChange={(e) => setLoginPass(e.target.value)}
+                  placeholder="Password"
+                  autoComplete="current-password"
+                  className="w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2.5 py-1.5 text-[12px] text-white placeholder:text-zinc-600 focus:outline-none focus:border-white/[0.12]"
+                />
+                {loginError && <p className="text-[11px] text-rose-400/80">{loginError}</p>}
+                <button
+                  type="submit"
+                  disabled={signingIn}
+                  className="w-full py-1.5 rounded-md bg-white/[0.08] border border-white/[0.08] text-[12px] text-white font-medium hover:bg-white/[0.12] transition-colors disabled:opacity-40"
+                >
+                  {signingIn ? "Signing in…" : "Sign in"}
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+      </div>
     </nav>
   );
 }

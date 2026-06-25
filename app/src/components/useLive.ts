@@ -9,7 +9,8 @@ const fetcher = (url: string) =>
     return r.json();
   });
 
-export function useLive<T>(url: string, interval = 2000) {
+// `url` may be null to conditionally skip fetching (SWR treats a null key as "don't fetch").
+export function useLive<T>(url: string | null, interval = 2000) {
   return useSWR<T>(url, fetcher, {
     refreshInterval: interval,
     revalidateOnFocus: true,

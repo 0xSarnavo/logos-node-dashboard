@@ -6,6 +6,7 @@ import { SkeletonRows } from "@/components/Skeleton";
 import { InfoTip } from "@/components/InfoTip";
 import type { MapPeer, PeerStatus } from "@/components/PeerWorldMap";
 import { timeAgo } from "@/lib/format";
+import { useAuth } from "@/components/AuthProvider";
 
 const PeerWorldMap = dynamic(() => import("@/components/PeerWorldMap"), {
   ssr: false,
@@ -97,6 +98,7 @@ function BarRow({ label, count, max }: { label: ReactNode; count: number; max: n
 type SortKey = "status" | "ip" | "country" | "isp" | "observed" | "first_seen" | "last_seen";
 
 export default function PeersPage() {
+  const { authed } = useAuth();
   const { data } = useLive<PeersData>("/api/peers", 30000);
   const { data: stats } = useLive<StatsData>("/api/peers/stats", 30000);
   const { data: self } = useLive<{ lat: number; lon: number; city?: string; region?: string; country?: string; country_code?: string; ip?: string; isp?: string; asn?: string; timezone?: string }>("/api/peers/self", 120000);
@@ -161,7 +163,7 @@ export default function PeersPage() {
 
   // Map peers
   const mapPeers: MapPeer[] = peers.map((p) => ({
-    ip: p.ip, lat: p.lat, lon: p.lon, city: p.city, country: p.country, isp: p.isp,
+    ip: authed ? p.ip : "", lat: p.lat, lon: p.lon, city: p.city, country: p.country, isp: p.isp,
     is_bootstrap: p.is_bootstrap, status: p.status, tracked: fmtDur(p.observed), last_seen: p.last_seen,
   }));
 
@@ -342,7 +344,7 @@ export default function PeersPage() {
                 <span className="w-5 text-[10px] tabular-nums text-zinc-600 text-right">{i + 1}</span>
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.active ? "bg-emerald-500/70" : "bg-zinc-600"}`} />
                 <span className="text-base shrink-0">{countryFlag(p.country_code)}</span>
-                <span className="hash text-[11px] text-zinc-300 truncate flex-1">{p.ip}</span>
+                <span className="hash text-[11px] text-zinc-300 truncate flex-1">{authed ? p.ip : (p.city || p.country || "peer")}</span>
                 <span className="text-[12px] font-semibold tabular-nums">{fmtDur(p.observed)}</span>
               </div>
               <div className="flex items-center gap-2 mt-1 pl-[42px]">
@@ -385,7 +387,7 @@ export default function PeersPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 shrink-0" />
               <span className="text-base shrink-0">{countryFlag(ccByIp[p.ip] || "")}</span>
               <div className="min-w-0 flex-1">
-                <p className="hash text-[11px] text-zinc-300 truncate">{p.ip}</p>
+                <p className="hash text-[11px] text-zinc-300 truncate">{authed ? p.ip : ([p.city, p.country].filter(Boolean).join(", ") || "peer")}</p>
                 <p className="text-[9px] text-zinc-600 truncate">{[p.city, p.country].filter(Boolean).join(", ") || "—"}{p.isp ? ` · ${p.isp}` : ""}</p>
               </div>
               <span className="text-[10px] text-zinc-500 shrink-0">{timeAgo(p.first_seen, true)}</span>
@@ -442,7 +444,7 @@ export default function PeersPage() {
                   <tr key={p.ip}>
                     <td className="py-2 px-4"><span className={`inline-block w-1.5 h-1.5 rounded-full ${p.active ? "bg-emerald-500/70" : "bg-zinc-600"}`} title={p.active ? "Active" : "Stale"} /></td>
                     <td className="py-2 px-4 hash tabular-nums text-zinc-300">
-                      {p.ip}
+                      {authed ? p.ip : "—"}
                       {p.is_bootstrap && <span className="ml-2 text-[9px] px-1.5 py-0.5 border border-white/[0.08] rounded text-zinc-500 uppercase tracking-wider">boot</span>}
                     </td>
                     <td className="py-2 px-4 text-zinc-400">

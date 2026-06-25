@@ -1,5 +1,6 @@
 "use client";
 import { useState, useCallback } from "react";
+import AuthGate from "@/components/AuthGate";
 
 // --- Types ---
 
@@ -84,6 +85,14 @@ const requestedApis: RequestedApi[] = [
 // --- Component ---
 
 export default function ApisPage() {
+  return (
+    <AuthGate>
+      <ApisContent />
+    </AuthGate>
+  );
+}
+
+function ApisContent() {
   const [results, setResults] = useState<Record<string, TryResult>>({});
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
 

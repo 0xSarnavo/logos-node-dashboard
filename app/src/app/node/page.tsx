@@ -6,6 +6,7 @@ import { useLive } from "@/components/useLive";
 import { SkeletonRows } from "@/components/Skeleton";
 import { InfoTip } from "@/components/InfoTip";
 import { RANGES } from "@/lib/ranges";
+import AuthGate from "@/components/AuthGate";
 
 function fmtDur(s: number | null) {
   if (s == null) return "—";
@@ -103,6 +104,14 @@ function WalletStatusBadge({ status }: { status: string }) {
 }
 
 export default function MyNodePage() {
+  return (
+    <AuthGate>
+      <MyNodeContent />
+    </AuthGate>
+  );
+}
+
+function MyNodeContent() {
   const [range, setRange] = useState("1h");
   const { data: node } = useLive<any>("/api/node", 3000);
   const { data: walletData } = useLive<any>("/api/wallet", 10000);

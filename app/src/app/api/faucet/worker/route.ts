@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { faucetEnabled, faucetDisabled } from "@/lib/api";
 import { shortKey } from "@/lib/wallets";
+import { readAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,7 @@ async function stopWorker() {
 
 // POST — start/stop background worker
 export async function POST(req: NextRequest) {
+  if (!(await readAuth()).authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!faucetEnabled()) return faucetDisabled();
   const body = await req.json();
 
@@ -177,6 +179,7 @@ export async function POST(req: NextRequest) {
 
 // GET — worker status + recent logs + per-minute series for graphs
 export async function GET() {
+  if (!(await readAuth()).authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   await ensureSchema();
   const isRunning = workerInterval !== null;
 

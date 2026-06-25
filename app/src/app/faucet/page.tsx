@@ -4,6 +4,7 @@ import { useLive } from "@/components/useLive";
 import Chart from "@/components/Chart";
 import MultiChart from "@/components/MultiChart";
 import { truncHash } from "@/lib/format";
+import AuthGate from "@/components/AuthGate";
 
 function fmtDur(s: number) {
   if (s < 60) return `${s}s`;
@@ -14,10 +15,41 @@ function fmtDur(s: number) {
   return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
+// Time-range filter options for the faucet charts/stats. `ms` = window length (null = all time).
+const FAUCET_RANGES: { id: string; label: string; ms: number | null }[] = [
+  { id: "1h", label: "1h", ms: 60 * 60 * 1000 },
+  { id: "6h", label: "6h", ms: 6 * 60 * 60 * 1000 },
+  { id: "24h", label: "24h", ms: 24 * 60 * 60 * 1000 },
+  { id: "7d", label: "7d", ms: 7 * 24 * 60 * 60 * 1000 },
+  { id: "all", label: "All", ms: null },
+];
+
+// Find time windows within [start, end] that have no faucet activity. A gap is any span
+// longer than `thresholdMs` between consecutive activity timestamps (and at the edges).
+function findGaps(times: number[], start: number, end: number, thresholdMs: number) {
+  const gaps: { from: number; to: number; durMs: number }[] = [];
+  const pts = times.filter((t) => t >= start && t <= end).sort((a, b) => a - b);
+  let prev = start;
+  for (const t of pts) {
+    if (t - prev > thresholdMs) gaps.push({ from: prev, to: t, durMs: t - prev });
+    prev = t;
+  }
+  if (end - prev > thresholdMs) gaps.push({ from: prev, to: end, durMs: end - prev });
+  return gaps;
+}
 
 export default function FaucetPage() {
+  return (
+    <AuthGate>
+      <FaucetContent />
+    </AuthGate>
+  );
+}
+
+function FaucetContent() {
   const { data: info } = useLive<any>("/api/faucet", 15000);
   const { data: worker, mutate } = useLive<any>("/api/faucet/worker", 3000);
+  const [range, setRange] = useState("24h");
   const [gap, setGap] = useState(12);
   const [maxGrants, setMaxGrants] = useState(0);
   const [selectedKeys, setSelectedKeys] = useState<Record<string, boolean>>({});
@@ -62,12 +94,31 @@ export default function FaucetPage() {
 
   const session = worker?.session;
   const logs = worker?.recent_logs || [];
-  const series: any[] = worker?.series || [];
+  const allSeries: any[] = worker?.series || [];
+
+  // Time-range filter: keep only series buckets within the selected window (client-side).
+  const rangeDef = FAUCET_RANGES.find((r) => r.id === range) ?? FAUCET_RANGES[2];
+  const now = Date.now();
+  const windowStart = rangeDef.ms != null ? now - rangeDef.ms : 0;
+  const series = rangeDef.ms == null
+    ? allSeries
+    : allSeries.filter((s) => new Date(s.time).getTime() >= windowStart);
+
   const elapsed = session?.started_at ? Math.floor((Date.now() - new Date(session.started_at).getTime()) / 1000) : 0;
   const totalSeriesCalls = series.reduce((a, s) => a + s.calls, 0);
   const avgLatency = totalSeriesCalls > 0
     ? Math.round(series.reduce((a, s) => a + s.latency * s.calls, 0) / totalSeriesCalls)
     : null;
+
+  // Gaps view: time windows in the selected range that saw NO faucet activity (no API calls).
+  // We use the per-minute buckets that recorded at least one call as "activity" markers.
+  const activityTimes = series.filter((s) => (s.calls ?? 0) > 0).map((s) => new Date(s.time).getTime());
+  const seriesTimes = series.map((s) => new Date(s.time).getTime());
+  const gapStart = rangeDef.ms != null ? windowStart : (seriesTimes.length ? Math.min(...seriesTimes) : now);
+  // A gap = a no-activity span longer than ~3 bucket-widths (3 min) so brief pauses aren't flagged.
+  const GAP_THRESHOLD_MS = 3 * 60 * 1000;
+  const gaps = series.length > 0 ? findGaps(activityTimes, gapStart, now, GAP_THRESHOLD_MS) : [];
+  const fmtClock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   // Group logs by wallet so each wallet gets its own log box
   const logsByWallet: Record<string, any[]> = {};
@@ -86,7 +137,7 @@ export default function FaucetPage() {
 
   return (
     <div className="px-6 py-5 mx-auto pb-14">
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <h1 className="text-xl font-bold tracking-tight">Faucet</h1>
         {isRunning && (
           <span className="flex items-center gap-1.5 text-[11px] text-emerald-400/80">
@@ -94,6 +145,19 @@ export default function FaucetPage() {
             Running server-side — safe to close browser
           </span>
         )}
+        {/* Time-range filter — drives the session charts, stats, and gaps below. */}
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium mr-1">Range</span>
+          {FAUCET_RANGES.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setRange(r.id)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${range === r.id ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]"}`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -258,6 +322,58 @@ export default function FaucetPage() {
             </div>
             <Chart data={series.map((s) => ({ time: s.time, value: s.latency }))} color="#ffffff" unit="ms" height={170} />
           </div>
+        </div>
+      )}
+
+      {/* Gaps — periods within the selected range with no faucet activity */}
+      {series.length > 0 && (
+        <div className="glass rounded-xl p-4 mb-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[10px] text-zinc-500 uppercase tracking-widest font-medium">
+              Activity Gaps <span className="text-zinc-600">· {rangeDef.label}</span>
+            </h3>
+            <span className="text-[11px] text-zinc-500 tabular-nums">
+              {gaps.length === 0 ? "no gaps" : `${gaps.length} gap${gaps.length !== 1 ? "s" : ""}`}
+            </span>
+          </div>
+
+          {/* Timeline bar: shaded segments mark no-activity windows across the range. */}
+          <div className="relative h-6 rounded-md bg-emerald-500/[0.08] overflow-hidden mb-3 border border-white/[0.04]">
+            {(() => {
+              const spanStart = gapStart;
+              const spanEnd = now;
+              const span = Math.max(1, spanEnd - spanStart);
+              return gaps.map((g, i) => {
+                const left = ((g.from - spanStart) / span) * 100;
+                const width = ((g.to - g.from) / span) * 100;
+                return (
+                  <div
+                    key={i}
+                    className="absolute inset-y-0 bg-amber-500/30"
+                    style={{ left: `${left}%`, width: `${Math.max(0.5, width)}%` }}
+                    title={`No activity ${fmtClock(g.from)} → ${fmtClock(g.to)} (${fmtDur(Math.round(g.durMs / 1000))})`}
+                  />
+                );
+              });
+            })()}
+          </div>
+          <div className="flex items-center gap-3 text-[9px] text-zinc-600 mb-3">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-[1px] bg-emerald-500/30" /> active</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-[1px] bg-amber-500/40" /> gap (no grants)</span>
+          </div>
+
+          {gaps.length === 0 ? (
+            <p className="text-[12px] text-zinc-600">Continuous activity across this range — no idle periods detected.</p>
+          ) : (
+            <div className="space-y-1 max-h-[160px] overflow-y-auto">
+              {gaps.map((g, i) => (
+                <div key={i} className="flex items-center justify-between text-[11px] py-1 border-b border-white/[0.03] last:border-0">
+                  <span className="tabular-nums text-zinc-400">{fmtClock(g.from)} → {fmtClock(g.to)}</span>
+                  <span className="tabular-nums text-amber-400/70">{fmtDur(Math.round(g.durMs / 1000))}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

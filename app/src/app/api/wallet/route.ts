@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { fetchNode } from "@/lib/node";
 import { WALLET_KEYS, shortKey } from "@/lib/wallets";
 import { apiError } from "@/lib/api";
+import { readAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!(await readAuth()).authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const wallets = await Promise.all(
       WALLET_KEYS.map(async (key) => {

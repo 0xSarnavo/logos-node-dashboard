@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
 import { fetchNode } from "@/lib/node";
+import { readAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ const GENESIS = 1776093586; // 2026-04-13T15:19:46Z
 const SLOT_DURATION = 1.0;
 
 export async function GET() {
+  if (!(await readAuth()).authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const [nodeInfo, networkInfo, stats, slotHistory] = await Promise.all([
       fetchNode<any>("cryptarchia/info"),

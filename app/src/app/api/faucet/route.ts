@@ -3,6 +3,7 @@ import { fetchNode } from "@/lib/node";
 import pool from "@/lib/db";
 import { WALLET_KEYS, shortKey, isValidKey } from "@/lib/wallets";
 import { apiError, faucetEnabled, faucetDisabled } from "@/lib/api";
+import { readAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
 
 // GET /api/faucet — balances + session history
 export async function GET() {
+  if (!(await readAuth()).authed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   try {
     const balances = await Promise.all(
       WALLET_KEYS.map(async (key) => {
