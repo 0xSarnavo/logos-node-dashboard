@@ -1,40 +1,51 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
+import { fetchNode } from "@/lib/node";
+import { readAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-// Approximate this node's location by geolocating the server's public egress IP.
-// (The node only binds private addresses locally, so this is the closest signal we have.)
+// This node's identity + approximate location. The node binds only private addresses locally,
+// so we geolocate the server's public egress IP. peer_id is a public network identifier and is
+// always returned; the raw IP is only returned to authenticated viewers.
 let cached: Record<string, any> | null = null;
 let cachedAt = 0;
 const TTL = 10 * 60 * 1000;
 
 export async function GET() {
   try {
-    if (cached && Date.now() - cachedAt < TTL) return NextResponse.json(cached);
-    const res = await fetch(
-      "http://ip-api.com/json/?fields=status,country,countryCode,region,regionName,city,timezone,isp,org,as,lat,lon,query",
-      { signal: AbortSignal.timeout(8000) }
-    );
-    const d = await res.json();
-    if (d.status !== "success") {
-      return NextResponse.json({ error: "geolocation unavailable" }, { status: 502 });
+    const { authed } = await readAuth();
+
+    if (!cached || Date.now() - cachedAt >= TTL) {
+      const [geo, netInfo] = await Promise.all([
+        fetch(
+          "http://ip-api.com/json/?fields=status,country,countryCode,region,regionName,city,timezone,isp,org,as,lat,lon,query",
+          { signal: AbortSignal.timeout(8000) }
+        ).then((r) => r.json()).catch(() => null),
+        fetchNode<any>("network/info").catch(() => null),
+      ]);
+      if (!geo || geo.status !== "success") {
+        return NextResponse.json({ error: "geolocation unavailable" }, { status: 502 });
+      }
+      cached = {
+        ip: geo.query,
+        peer_id: netInfo?.peer_id ?? null, // public network identifier
+        lat: geo.lat,
+        lon: geo.lon,
+        city: geo.city,
+        region: geo.regionName,
+        country: geo.country,
+        country_code: geo.countryCode,
+        timezone: geo.timezone,
+        isp: geo.isp,
+        org: geo.org,
+        asn: geo.as, // e.g. "AS24560 Bharti Airtel Ltd."
+      };
+      cachedAt = Date.now();
     }
-    cached = {
-      ip: d.query,
-      lat: d.lat,
-      lon: d.lon,
-      city: d.city,
-      region: d.regionName,
-      country: d.country,
-      country_code: d.countryCode,
-      timezone: d.timezone,
-      isp: d.isp,
-      org: d.org,
-      asn: d.as, // e.g. "AS24560 Bharti Airtel Ltd."
-    };
-    cachedAt = Date.now();
-    return NextResponse.json(cached);
+
+    // Hide the raw IP from public viewers; peer_id + geo stay (peer_id is meant to be public).
+    return NextResponse.json({ ...cached, ip: authed ? cached.ip : null });
   } catch (e) {
     return apiError(e);
   }

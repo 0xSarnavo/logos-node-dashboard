@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api";
 import pool from "@/lib/db";
+import { readAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ const CONTINENT_MAP: Record<string, string> = {
 
 export async function GET() {
   try {
+    const { authed } = await readAuth();
     const [byCountry, byIsp, newPeers, bootstrapRes, allPeers] =
       await Promise.all([
         pool.query(`
@@ -44,7 +46,7 @@ export async function GET() {
         LIMIT 20
       `),
         pool.query(`
-        SELECT ip, country, city, isp, first_seen
+        SELECT ip, country, country_code, city, isp, first_seen
         FROM peers
         WHERE first_seen > NOW() - INTERVAL '24 hours'
         ORDER BY first_seen DESC
@@ -84,9 +86,10 @@ export async function GET() {
         isp: r.isp,
         count: parseInt(r.count),
       })),
-      new_peers_24h: newPeers.rows.map((r: any) => ({
-        ip: r.ip,
+      new_peers_24h: newPeers.rows.map((r: any, i: number) => ({
+        ip: authed ? r.ip : `peer-${i}`, // hide real IPs from public viewers
         country: r.country,
+        country_code: r.country_code, // for the flag (works regardless of IP anonymization)
         city: r.city,
         isp: r.isp,
         first_seen: r.first_seen,

@@ -29,7 +29,7 @@ export interface SelfNode {
   lon: number;
   city?: string;
   country?: string;
-  ip?: string;
+  ip?: string | null;
   isp?: string;
 }
 

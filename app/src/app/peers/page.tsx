@@ -33,7 +33,7 @@ interface StatsData {
   by_isp: { isp: string; count: number }[];
   continents: { continent: string; count: number }[];
   bootstrap: { bootstrap: number; regular: number; total: number; ratio: number };
-  new_peers_24h: { ip: string; country: string; city: string; isp: string; first_seen: string }[];
+  new_peers_24h: { ip: string; country: string; country_code?: string; city: string; isp: string; first_seen: string }[];
   new_peers_count: number;
 }
 
@@ -101,7 +101,7 @@ export default function PeersPage() {
   const { authed } = useAuth();
   const { data } = useLive<PeersData>("/api/peers", 30000);
   const { data: stats } = useLive<StatsData>("/api/peers/stats", 30000);
-  const { data: self } = useLive<{ lat: number; lon: number; city?: string; region?: string; country?: string; country_code?: string; ip?: string; isp?: string; asn?: string; timezone?: string }>("/api/peers/self", 120000);
+  const { data: self } = useLive<{ lat: number; lon: number; city?: string; region?: string; country?: string; country_code?: string; ip?: string | null; peer_id?: string | null; isp?: string; asn?: string; timezone?: string }>("/api/peers/self", 120000);
 
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | "active" | "stale" | "bootstrap">("all");
@@ -144,6 +144,15 @@ export default function PeersPage() {
   const longestPeer = peers.reduce((mx, p) => (p.observed > (mx?.observed ?? -1) ? p : mx), peers[0]);
   const pctOf = (n: number) => (peers.length ? (n / peers.length) * 100 : 0);
   const countries = stats?.by_country ?? data?.countries?.map((c) => ({ country: c.country, country_code: c.country_code, count: c.peer_count })) ?? [];
+  // Include this node's own country in the leaderboard (it isn't in the peers table).
+  const countriesWithSelf = (() => {
+    if (!self?.country_code) return countries;
+    const list = countries.map((c) => ({ ...c }));
+    const hit = list.find((c) => c.country_code === self.country_code);
+    if (hit) hit.count += 1;
+    else list.push({ country: self.country || self.country_code, country_code: self.country_code, count: 1 });
+    return list.sort((a, b) => b.count - a.count);
+  })();
   const continents = stats?.continents ?? [];
   // Include every tracked peer (single-sightings observe ~0) so the median isn't skewed (LOG-8).
   const observedSorted = peers.map((p) => p.observed).sort((a, b) => a - b);
@@ -293,7 +302,7 @@ export default function PeersPage() {
             </div>
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-[11px] text-zinc-400">Coverage</span>
-              <span className="text-sm font-bold tabular-nums">{countries.length}<span className="text-zinc-600 font-normal"> countries · {continents.length} continents</span></span>
+              <span className="text-sm font-bold tabular-nums">{countriesWithSelf.length}<span className="text-zinc-600 font-normal"> countries · {continents.length} continents</span></span>
             </div>
           </div>
         </div>
@@ -307,7 +316,7 @@ export default function PeersPage() {
           sub={stats?.new_peers_24h?.[0] ? timeAgo(stats.new_peers_24h[0].first_seen, true) : "—"} />
 
         {/* My Node — this dashboard's own node on the network */}
-        {self?.ip && (
+        {self?.lat != null && (
           <div className="glass rounded-xl overflow-hidden animate-in md:col-span-6 lg:col-span-12">
             <div className="flex items-center gap-2 px-4 py-2.5">
               <span className="w-2 h-2 rounded-full bg-blue-500 live-dot" />
@@ -315,9 +324,10 @@ export default function PeersPage() {
               <span className="text-[10px] text-zinc-600">this dashboard&apos;s node on the network</span>
             </div>
             <div className="glow-separator" />
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-px bg-white/[0.03]">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-px bg-white/[0.03]">
               {([
-                ["IP", self.ip, true],
+                ["Peer ID", self.peer_id || "—", true],
+                ["IP", self.ip || "— (sign in)", true],
                 ["Location", `${self.city || "—"}${self.region ? ", " + self.region : ""}`, false],
                 ["Country", `${countryFlag(self.country_code || "")} ${self.country || "—"}`, false],
                 ["ISP", self.isp || "—", false],
@@ -359,9 +369,9 @@ export default function PeersPage() {
 
         {/* Row 3 — Top countries */}
         <Panel title="Top Countries" tip="Peer count by country." span="md:col-span-6 lg:col-span-3" body="max-h-[360px] overflow-y-auto py-1.5">
-          {countries.length === 0 ? <div className="px-4 py-8 text-center text-[12px] text-zinc-600">—</div> :
-            countries.slice(0, 30).map((c) => (
-              <BarRow key={(c.country_code || "") + c.country} count={c.count} max={countries[0]?.count || 1}
+          {countriesWithSelf.length === 0 ? <div className="px-4 py-8 text-center text-[12px] text-zinc-600">—</div> :
+            countriesWithSelf.slice(0, 30).map((c) => (
+              <BarRow key={(c.country_code || "") + c.country} count={c.count} max={countriesWithSelf[0]?.count || 1}
                 label={<><span className="text-base">{countryFlag(c.country_code)}</span><span className="truncate">{c.country}</span></>} />
             ))}
         </Panel>
@@ -385,7 +395,7 @@ export default function PeersPage() {
           ) : stats.new_peers_24h.map((p, i) => (
             <div key={p.ip} className={`flex items-center gap-2.5 px-4 py-2 border-b border-white/[0.03] last:border-0 ${i === 0 ? "row-new" : ""}`}>
               <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 shrink-0" />
-              <span className="text-base shrink-0">{countryFlag(ccByIp[p.ip] || "")}</span>
+              <span className="text-base shrink-0">{countryFlag(p.country_code || ccByIp[p.ip] || "")}</span>
               <div className="min-w-0 flex-1">
                 <p className="hash text-[11px] text-zinc-300 truncate">{authed ? p.ip : ([p.city, p.country].filter(Boolean).join(", ") || "peer")}</p>
                 <p className="text-[9px] text-zinc-600 truncate">{[p.city, p.country].filter(Boolean).join(", ") || "—"}{p.isp ? ` · ${p.isp}` : ""}</p>
@@ -425,10 +435,10 @@ export default function PeersPage() {
                 </tr>
               </thead>
               <tbody>
-                {self?.ip && filter === "all" && !q && (
+                {self?.lat != null && filter === "all" && !q && (
                   <tr className="bg-blue-500/[0.05]">
                     <td className="py-2 px-4"><span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 live-dot" title="My Node" /></td>
-                    <td className="py-2 px-4 hash tabular-nums text-zinc-200">{self.ip}<span className="ml-2 text-[9px] px-1.5 py-0.5 border border-blue-500/30 rounded text-blue-400/80 uppercase tracking-wider">my node</span></td>
+                    <td className="py-2 px-4 hash tabular-nums text-zinc-200">{self.ip || "—"}<span className="ml-2 text-[9px] px-1.5 py-0.5 border border-blue-500/30 rounded text-blue-400/80 uppercase tracking-wider">my node</span></td>
                     <td className="py-2 px-4 text-zinc-400">{self.country_code && <span className="mr-1.5">{countryFlag(self.country_code)}</span>}{[self.city, self.country].filter(Boolean).join(", ") || "—"}</td>
                     <td className="py-2 px-4 text-zinc-500 max-w-[220px] truncate" title={self.isp}>{self.isp || "—"}</td>
                     <td className="py-2 px-4 text-right tabular-nums text-zinc-600">this node</td>

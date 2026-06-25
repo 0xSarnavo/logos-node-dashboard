@@ -17,6 +17,9 @@ export default function StatusBar() {
         <span>tip <span className="text-zinc-400 tabular-nums">{data?.height?.toLocaleString() ?? "—"}</span></span>
         <span>lib <span className="text-zinc-400 tabular-nums">{data?.lib_slot?.toLocaleString() ?? "—"}</span></span>
       </div>
+      <span className="absolute left-1/2 -translate-x-1/2 text-zinc-600 whitespace-nowrap hidden md:block pointer-events-none">
+        Independent personal project · not affiliated with or endorsed by Logos / logos.co
+      </span>
       <div className="ml-auto flex items-center gap-5 text-zinc-500">
         <span>peers <span className="text-zinc-400 tabular-nums">{data?.peers ?? "—"}</span></span>
         <span>lag <span className="text-zinc-400 tabular-nums">{data?.finality_lag ?? "—"}</span></span>
