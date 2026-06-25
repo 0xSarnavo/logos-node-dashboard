@@ -49,3 +49,7 @@ Thumbs.db
 *~
 .claude/
 **/.claude/
+
+# Caddy auth proxy config (holds bcrypt hash)
+Caddyfile
+!Caddyfile.example

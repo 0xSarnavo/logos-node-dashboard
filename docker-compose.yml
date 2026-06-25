@@ -139,6 +139,9 @@ services:
     build: ./indexer
     container_name: logos-indexer
     restart: unless-stopped
+    # Linux needs host.docker.internal mapped explicitly (no-op on Docker Desktop/macOS).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - NODE_API=http://host.docker.internal:8080
       - DB_DSN=postgresql://logos:${DB_PASSWORD:-logos_internal_db}@timescaledb:5432/logos
@@ -146,7 +149,8 @@ services:
       - NODE_LOG_DIR=/node-logs
       - SIDECAR_API=http://sidecar:8081
     volumes:
-      - /Users/sarnavo/Development/logos-node:/node-logs:ro
+      # NODE_DIR = where logos-node lives on this host (defaults to the macOS path).
+      - ${NODE_DIR:-/Users/sarnavo/Development/logos-node}:/node-logs:ro
     depends_on:
       - timescaledb
       - sidecar
@@ -167,7 +171,7 @@ services:
       - DB_PATH=/node-data/state/db
       - SIDECAR_PORT=8081
     volumes:
-      - /Users/sarnavo/Development/logos-node/state:/node-data/state:ro
+      - ${NODE_DIR:-/Users/sarnavo/Development/logos-node}/state:/node-data/state:ro
     expose:
       - "8081"
     deploy:
@@ -183,6 +187,8 @@ services:
     build: ./app
     container_name: logos-explorer
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - NODE_API=http://host.docker.internal:8080
       - SIDECAR_API=http://sidecar:8081
@@ -211,6 +217,23 @@ services:
     networks:
       - logos-monitor
 
+  # --- Caddy auth proxy: public HTTPS + basic-auth in front of the explorer ---
+  # Reads ./Caddyfile (gitignored — holds your bcrypt hash). See Caddyfile.example.
+  caddy:
+    image: caddy:2
+    container_name: logos-caddy
+    restart: unless-stopped
+    ports:
+      - "8443:8443"      # public — open VCN ingress + host firewall for TCP 8443
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - explorer
+    networks:
+      - logos-monitor
+
 networks:
   logos-monitor:
     driver: bridge
@@ -221,3 +244,5 @@ volumes:
   loki-data:
   tempo-data:
   timescale-data:
+  caddy-data:
+  caddy-config:
