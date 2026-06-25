@@ -29,6 +29,8 @@ jobs:
           script: |
             set -e
             cd ~/logos-node-dashboard
-            git pull --ff-only
+            # deterministic sync (survives force-pushed history; gitignored .env/Caddyfile are kept)
+            git fetch origin main
+            git reset --hard origin/main
             NODE_DIR=$HOME/logos-node docker compose up -d --build
             docker image prune -f
