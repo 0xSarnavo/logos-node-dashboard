@@ -1,19 +1,19 @@
-# Public auth proxy for the Logos explorer (port 8443, self-signed HTTPS).
+# Public auth proxy for the Logos explorer — HTTP basic-auth on :8443.
 #
 # Setup on the host:
 #   1. cp Caddyfile.example Caddyfile
 #   2. generate a bcrypt hash for your password:
 #        docker run --rm caddy:2 caddy hash-password --plaintext 'YOUR_PASSWORD'
-#   3. paste the hash after the username below (replace REPLACE_WITH_BCRYPT_HASH)
-#   4. docker compose up -d caddy
+#   3. replace REPLACE_WITH_BCRYPT_HASH below with that hash
+#   4. docker compose up -d caddy   (and open VCN ingress + host firewall for TCP 8443)
 #
-# The real Caddyfile is gitignored (it holds your hash), so it is NOT overwritten by git pull.
-# Access: https://<VM_PUBLIC_IP>:8443  (self-signed cert -> click through the browser warning).
-# For a trusted cert, point a domain (e.g. DuckDNS) at the VM and replace ":8443 { tls internal"
-# with "your-name.duckdns.org {" — Caddy then auto-provisions Let's Encrypt.
+# The real Caddyfile is gitignored (it holds your hash), so git pull never overwrites it.
+# Access: http://<VM_PUBLIC_IP>:8443  (prompts for the username/password).
+#
+# For trusted HTTPS: point a domain (e.g. DuckDNS) at the VM and change ":8443" to
+# "your-name.duckdns.org" — Caddy then auto-provisions a Let's Encrypt cert.
 
 :8443 {
-	tls internal
 	basic_auth {
 		admin REPLACE_WITH_BCRYPT_HASH
 	}
