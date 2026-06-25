@@ -44,7 +44,8 @@ export async function GET() {
       cachedAt = Date.now();
     }
 
-    return NextResponse.json(cached);
+    // Hide the raw IP from public viewers (the injected peer shows "—" like other anonymized peers).
+    return NextResponse.json({ ...cached, ip: authed ? cached.ip : null });
   } catch (e) {
     return apiError(e);
   }
