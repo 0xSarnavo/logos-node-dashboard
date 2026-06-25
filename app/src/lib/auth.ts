@@ -4,9 +4,11 @@ import { cookies } from "next/headers";
 
 // Server-side auth: an HMAC-signed session cookie unlocks the private views.
 // Credentials and the signing secret come from env, with safe-enough defaults for local use.
-const AUTH_USER = process.env.DASH_AUTH_USER || "sunny";
-const AUTH_PASS = process.env.DASH_AUTH_PASS || "REDACTED";
-const SECRET = process.env.DASH_AUTH_SECRET || "logos-dash-default-secret-change-me";
+// NEVER hardcode real credentials here — this repo is public. The actual username,
+// password, and signing secret are provided via env (the host .env, which is gitignored).
+const AUTH_USER = process.env.DASH_AUTH_USER || "admin";
+const AUTH_PASS = process.env.DASH_AUTH_PASS || ""; // empty => login disabled until set
+const SECRET = process.env.DASH_AUTH_SECRET || "insecure-dev-fallback-set-DASH_AUTH_SECRET";
 
 export const SESSION_COOKIE = "dash_session";
 const MAX_AGE_SECONDS = 7 * 24 * 60 * 60; // 7 days
@@ -19,8 +21,9 @@ function hmacHex(payload: string): string {
   return crypto.createHmac("sha256", SECRET).update(payload).digest("hex");
 }
 
-// Whether the supplied credentials are valid.
+// Whether the supplied credentials are valid. Login is disabled unless DASH_AUTH_PASS is set.
 export function checkCredentials(username: string, password: string): boolean {
+  if (!AUTH_PASS) return false;
   return username === AUTH_USER && password === AUTH_PASS;
 }
 

@@ -199,10 +199,10 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:-logos_internal_db}
       - WALLET_KEYS=${WALLET_KEYS:-}
       - FAUCET_ENABLED=${FAUCET_ENABLED:-true}
-      # In-app login (set real values in .env on the host — repo is public, so the
-      # default DASH_AUTH_SECRET must be overridden or sessions are forgeable).
-      - DASH_AUTH_USER=${DASH_AUTH_USER:-sunny}
-      - DASH_AUTH_PASS=${DASH_AUTH_PASS:-REDACTED}
+      # In-app login — REAL values come from the host .env (gitignored). Never put
+      # actual credentials here; this repo is public. Login is disabled unless set.
+      - DASH_AUTH_USER=${DASH_AUTH_USER:-admin}
+      - DASH_AUTH_PASS=${DASH_AUTH_PASS:-}
       - DASH_AUTH_SECRET=${DASH_AUTH_SECRET:-}
     ports:
       - "127.0.0.1:3333:3333"
