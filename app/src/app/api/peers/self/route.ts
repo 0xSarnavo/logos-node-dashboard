@@ -15,8 +15,6 @@ const TTL = 10 * 60 * 1000;
 export async function GET() {
   try {
     const { authed } = await readAuth();
-    // Hide this node entirely from public viewers — no identity, location, or peer_id.
-    if (!authed) return NextResponse.json({});
 
     if (!cached || Date.now() - cachedAt >= TTL) {
       const [geo, netInfo] = await Promise.all([

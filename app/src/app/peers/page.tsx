@@ -116,7 +116,7 @@ export default function PeersPage() {
   // lockstep. Wall-clock still forces "offline" once the whole set goes very stale.
   const lastTimes = (data?.peers ?? []).map((p) => (p.last_seen ? new Date(p.last_seen).getTime() : 0));
   const freshest = lastTimes.length ? Math.max(...lastTimes) : now;
-  const peers = (data?.peers ?? []).map((p) => {
+  const basePeers = (data?.peers ?? []).map((p) => {
     const last = p.last_seen ? new Date(p.last_seen).getTime() : 0;
     const first = p.first_seen ? new Date(p.first_seen).getTime() : last;
     const lagMin = last > 0 ? (freshest - last) / 60000 : Infinity; // dumps behind the current set
@@ -128,6 +128,15 @@ export default function PeersPage() {
       : "offline";
     return { ...p, observed: Math.max(0, Math.floor((last - first) / 1000)), active: status === "online", status, _last: last, _first: first };
   });
+  // Inject this dashboard's own node into the list as an ordinary peer — no badge, no highlight —
+  // so it blends in and viewers can't tell which peer is the operator's node. IP only shown to authed.
+  const selfPeer = self?.lat != null ? {
+    ip: self.ip || "node-self", country: self.country, country_code: self.country_code,
+    city: self.city, isp: self.isp, lat: self.lat, lon: self.lon, is_bootstrap: false,
+    first_seen: new Date(now).toISOString(), last_seen: new Date(now).toISOString(),
+    observed: 0, active: true, status: "online" as PeerStatus, _last: now, _first: now,
+  } : null;
+  const peers = selfPeer ? [...basePeers, selfPeer as (typeof basePeers)[number]] : basePeers;
 
   const total = data?.total ?? 0;
   // "Active now" = the node's real live connection count; fall back to the in-set peer count.
@@ -241,9 +250,8 @@ export default function PeersPage() {
         {/* Row 1 — Map hero */}
         <Panel title="Peer World Map" right={<span className="text-[11px] text-zinc-500">{total} pins</span>}
           span="md:col-span-6 lg:col-span-8" body="p-2">
-          {data ? <PeerWorldMap peers={mapPeers} self={self?.lat != null ? self : null} /> : <div className="h-[340px] flex items-center justify-center text-[12px] text-zinc-600">Loading map…</div>}
+          {data ? <PeerWorldMap peers={mapPeers} self={null} /> : <div className="h-[340px] flex items-center justify-center text-[12px] text-zinc-600">Loading map…</div>}
           <div className="flex items-center gap-3.5 px-3 pt-2 pb-1 text-[10px] text-zinc-500 flex-wrap">
-            <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" />My Node</span>
             <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500" />Online</span>
             <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />Inconsistent</span>
             <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Offline</span>
@@ -314,34 +322,6 @@ export default function PeersPage() {
         <Kpi span="md:col-span-3 lg:col-span-3" label="Bootstrap" tip="Hard-coded seed nodes." value={boot?.bootstrap ?? 0} sub={`${boot?.regular ?? 0} regular · ${boot?.ratio ?? 0}%`} />
         <Kpi span="md:col-span-3 lg:col-span-3" label="New (24h)" tip="First seen in the last 24h." value={stats?.new_peers_count ?? 0}
           sub={stats?.new_peers_24h?.[0] ? timeAgo(stats.new_peers_24h[0].first_seen, true) : "—"} />
-
-        {/* My Node — this dashboard's own node on the network */}
-        {self?.lat != null && (
-          <div className="glass rounded-xl overflow-hidden animate-in md:col-span-6 lg:col-span-12">
-            <div className="flex items-center gap-2 px-4 py-2.5">
-              <span className="w-2 h-2 rounded-full bg-blue-500 live-dot" />
-              <h3 className="text-[10px] text-zinc-300 uppercase tracking-widest font-medium">My Node</h3>
-              <span className="text-[10px] text-zinc-600">this dashboard&apos;s node on the network</span>
-            </div>
-            <div className="glow-separator" />
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-px bg-white/[0.03]">
-              {([
-                ["Peer ID", self.peer_id || "—", true],
-                ["IP", self.ip || "— (sign in)", true],
-                ["Location", `${self.city || "—"}${self.region ? ", " + self.region : ""}`, false],
-                ["Country", `${countryFlag(self.country_code || "")} ${self.country || "—"}`, false],
-                ["ISP", self.isp || "—", false],
-                ["Network", self.asn || "—", true],
-                ["Timezone", self.timezone || "—", false],
-              ] as const).map(([label, value, mono]) => (
-                <div key={label} className="bg-black/40 px-4 py-2.5 min-w-0">
-                  <p className="text-[9px] text-zinc-600 uppercase tracking-widest mb-1">{label}</p>
-                  <p className={`text-[12px] text-zinc-200 truncate ${mono ? "hash" : ""}`} title={String(value)}>{value}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Row 3 — Longest tracked leaderboard */}
         <Panel title="Longest-Tracked Peers" tip="Ranked by time between first and last sighting (observation window, not true uptime)."
@@ -435,17 +415,6 @@ export default function PeersPage() {
                 </tr>
               </thead>
               <tbody>
-                {self?.lat != null && filter === "all" && !q && (
-                  <tr className="bg-blue-500/[0.05]">
-                    <td className="py-2 px-4"><span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 live-dot" title="My Node" /></td>
-                    <td className="py-2 px-4 hash tabular-nums text-zinc-200">{self.ip || "—"}<span className="ml-2 text-[9px] px-1.5 py-0.5 border border-blue-500/30 rounded text-blue-400/80 uppercase tracking-wider">my node</span></td>
-                    <td className="py-2 px-4 text-zinc-400">{self.country_code && <span className="mr-1.5">{countryFlag(self.country_code)}</span>}{[self.city, self.country].filter(Boolean).join(", ") || "—"}</td>
-                    <td className="py-2 px-4 text-zinc-500 max-w-[220px] truncate" title={self.isp}>{self.isp || "—"}</td>
-                    <td className="py-2 px-4 text-right tabular-nums text-zinc-600">this node</td>
-                    <td className="py-2 px-4 text-right text-zinc-600">—</td>
-                    <td className="py-2 px-4 text-right tabular-nums text-blue-400/70">live</td>
-                  </tr>
-                )}
                 {!data ? (
                   <tr><td colSpan={7} className="p-0"><SkeletonRows rows={6} /></td></tr>
                 ) : sorted.length === 0 ? (
