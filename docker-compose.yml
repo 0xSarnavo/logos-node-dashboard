@@ -88,15 +88,19 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      - "--no-collector.filesystem"
+      - "--path.rootfs=/host/root"
       - "--collector.cpu"
       - "--collector.meminfo"
       - "--collector.diskstats"
       - "--collector.netdev"
       - "--collector.loadavg"
+      - "--collector.filesystem"
+      - "--collector.filesystem.mount-points-exclude=^/(host/root/)?(dev|proc|sys|run|var/lib/docker/.+)($$|/)"
+      - "--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|cgroup.*|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|mqueue|nsfs|overlay|proc|procfs|pstore|securityfs|sysfs|tracefs|tmpfs)$$"
     expose:
       - "9100"
     deploy:
@@ -198,6 +202,11 @@ services:
       - DB_USER=logos
       - DB_PASSWORD=${DB_PASSWORD:-logos_internal_db}
       - WALLET_KEYS=${WALLET_KEYS:-}
+      # Leader/funding pk(s) of THIS node (comma-separated 64-hex) — powers the
+      # "Block Production" panel. Defaults to WALLET_KEYS if unset.
+      - NODE_LEADER_KEYS=${NODE_LEADER_KEYS:-}
+      # Host metrics source for the "Host Machine (VM)" panel.
+      - PROM_URL=${PROM_URL:-http://prometheus:9090}
       - FAUCET_ENABLED=${FAUCET_ENABLED:-true}
       # In-app login — REAL values come from the host .env (gitignored). Never put
       # actual credentials here; this repo is public. Login is disabled unless set.

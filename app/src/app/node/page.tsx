@@ -7,6 +7,8 @@ import { SkeletonRows } from "@/components/Skeleton";
 import { InfoTip } from "@/components/InfoTip";
 import { RANGES } from "@/lib/ranges";
 import AuthGate from "@/components/AuthGate";
+import VmStats from "@/components/VmStats";
+import BlockProduction from "@/components/BlockProduction";
 
 function fmtDur(s: number | null) {
   if (s == null) return "—";
@@ -196,6 +198,12 @@ function MyNodeContent() {
             <HealthLine state={prodState} label="Production" sub={`${s?.blocks_1h ?? 0} blocks/h`} tip="Are new blocks being produced on the network?" />
           </div>
         </div>
+
+        {/* Host Machine (VM) */}
+        <VmStats />
+
+        {/* Block Production (proposed / final / orphaned counts) */}
+        <BlockProduction />
 
         {/* Number-tile band — color only where it denotes status; otherwise white */}
         <Tile span="md:col-span-2 lg:col-span-2">

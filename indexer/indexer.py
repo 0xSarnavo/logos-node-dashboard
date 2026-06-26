@@ -290,6 +290,17 @@ def ensure_tables(conn):
                 last_seen       TIMESTAMPTZ     DEFAULT NOW()
             );
         """)
+        # Migrations for existing deployments — CREATE TABLE IF NOT EXISTS does NOT
+        # add new columns to a pre-existing table, so add them explicitly.
+        for stmt in [
+            "ALTER TABLE blocks ADD COLUMN IF NOT EXISTS is_orphaned BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE blocks ADD COLUMN IF NOT EXISTS slot BIGINT",
+            "ALTER TABLE block_content ADD COLUMN IF NOT EXISTS leader_key TEXT",
+        ]:
+            try:
+                cur.execute(stmt)
+            except Exception:
+                pass
         # Make hypertables (ignore if already done)
         for tbl in ['consensus_snapshots', 'blocks', 'block_events', 'network_snapshots']:
             try:
