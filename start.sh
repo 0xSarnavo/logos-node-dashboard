@@ -44,9 +44,7 @@ if [ ! -f .env ]; then
     echo "  You can change this later by editing .env"
     echo ""
     cat > .env <<EOF
-# Dashboard credentials
-GRAFANA_ADMIN_PASSWORD=admin
-GRAFANA_ANON_ENABLED=true
+# Dashboard — anonymous viewing (no login)
 # TimescaleDB (internal, not exposed)
 DB_PASSWORD=$(openssl rand -hex 16)
 EOF
@@ -56,8 +54,9 @@ EOF
     fi
     cat > .env <<EOF
 # Dashboard credentials - do not commit this file
-GRAFANA_ADMIN_PASSWORD=${PASSWORD}
-GRAFANA_ANON_ENABLED=false
+DASH_AUTH_USER=admin
+DASH_AUTH_PASS=${PASSWORD}
+DASH_AUTH_SECRET=$(openssl rand -hex 32)
 # TimescaleDB (internal, not exposed)
 DB_PASSWORD=$(openssl rand -hex 16)
 EOF
@@ -93,11 +92,7 @@ fi
 
 # ─── Check if images need downloading ──────────────────────────
 IMAGES=(
-  "grafana/grafana:11.1.0"
   "prom/prometheus:v2.53.0"
-  "grafana/loki:3.1.0"
-  "grafana/tempo:2.5.0"
-  "otel/opentelemetry-collector-contrib:0.100.0"
   "prom/node-exporter:v1.8.1"
   "timescale/timescaledb:latest-pg16"
 )
@@ -143,8 +138,8 @@ echo "================================================"
 echo "  Logos Node Dashboard"
 echo "================================================"
 echo ""
-echo "  Grafana:      http://localhost:3333"
-if [ "${GRAFANA_ANON_ENABLED:-false}" = "true" ]; then
+echo "  Dashboard:    http://localhost:3333"
+if [ -z "${PASSWORD:-}" ]; then
   echo "  Auth:         No login required"
 else
   echo "  Login:        Username: admin"
@@ -166,7 +161,7 @@ docker compose up -d --quiet-pull 2>/dev/null || docker compose up -d
 echo ""
 echo "Waiting for services to be ready..."
 
-SERVICES=("logos-grafana" "logos-prometheus" "logos-loki" "logos-otel-collector" "logos-node-exporter" "logos-tempo" "logos-timescaledb" "logos-indexer")
+SERVICES=("logos-prometheus" "logos-node-exporter" "logos-timescaledb" "logos-indexer" "logos-sidecar" "logos-explorer")
 MAX_WAIT=30
 ELAPSED=0
 

@@ -30,7 +30,6 @@ From `docker-compose.yml`, all published ports are bound to loopback:
 | Service | Port | Binding | Reachable from network? |
 |---------|------|---------|-------------------------|
 | explorer (UI + `/api`) | 3333 | `127.0.0.1:3333` | No |
-| Grafana | 3000 | `127.0.0.1:3000` | No |
 | Prometheus | 9090 | `127.0.0.1:9090` | No |
 | OTLP collector | 4317/4318 | `127.0.0.1:*` | No |
 | TimescaleDB | 5432 | internal Docker network only | No |

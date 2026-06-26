@@ -1,6 +1,6 @@
 # Logos Node Dashboard
 
-A self-hosted, dark-mode **block explorer & monitoring dashboard** for a [Logos](https://logos.co) (Nomos / Cryptarchia) blockchain node. It pairs a custom **Next.js explorer** with a full observability stack (TimescaleDB, Prometheus, Grafana, Loki, Tempo) and runs entirely locally via Docker Compose.
+A self-hosted, dark-mode **block explorer & monitoring dashboard** for a [Logos](https://logos.co) (Nomos / Cryptarchia) blockchain node. It pairs a custom **Next.js explorer** with TimescaleDB + Prometheus and runs entirely locally via Docker Compose.
 
 > Explorer UI → **http://localhost:3333**
 
@@ -47,7 +47,7 @@ Transaction detail is decoded straight from the node's `POST /storage/block` end
    │ node data │◀────────────────│ indexer.py  │
    └───────────┘                 └─────────────┘
 
-   Observability: Node ──OTLP──▶ OTel Collector ──▶ Prometheus / Loki / Tempo ──▶ Grafana (:3000)
+   Host metrics:  node-exporter ──▶ Prometheus ──▶ explorer (VM panel)
 ```
 
 ### Docker services
@@ -59,8 +59,7 @@ Transaction detail is decoded straight from the node's `POST /storage/block` end
 | `sidecar` | `./sidecar` (Python) | `8081` (internal) | Reads node RocksDB via `ldb` to expose raw/parsed block content |
 | `timescaledb` | `timescale/timescaledb` | `5432` (internal) | Time-series + relational store |
 | `prometheus` | `prom/prometheus` | `9090` | Metrics |
-| `grafana` | grafana | `3000` | Metrics dashboards |
-| `loki` / `tempo` / `otel-collector` / `node-exporter` | — | internal | Logs / traces / OTLP / host metrics |
+| `node-exporter` | — | internal | host CPU/mem/disk metrics |
 
 ---
 
@@ -98,7 +97,6 @@ Open **http://localhost:3333** (explorer). That's it.
 |---|---|---|
 | *(empty)* | explorer + db + indexer + sidecar + prometheus + node-exporter | laptop / Pi / WSL / dev |
 | `public` | + Caddy (HTTPS via your domain) | a public server |
-| `tracing` | + Loki + Tempo + OpenTelemetry (heavy) | deep debugging only |
 
 Per-platform notes:
 - **Raspberry Pi / 1–2 vCPU:** keep profiles empty and set `POLL_INTERVAL=5` in `.env`.
@@ -157,7 +155,7 @@ logos-node-dashboard/
 │   └── Dockerfile             # multi-stage production build (standalone output)
 ├── indexer/                   # Python indexer (node → TimescaleDB) + init.sql schema
 ├── sidecar/                   # Python sidecar (reads node RocksDB via ldb)
-├── prometheus/ loki/ tempo/ otel-collector/ grafana/   # observability config
+├── prometheus/                # scrape config
 ├── docker-compose.yml         # full stack
 ├── docker-compose.dev.yml     # explorer hot-reload override
 ├── .env.example               # copy to .env
@@ -172,8 +170,6 @@ Copy `.env.example` → `.env` (gitignored). Key variables:
 
 | Variable | Used by | Default | Notes |
 |----------|---------|---------|-------|
-| `GRAFANA_ADMIN_PASSWORD` | Grafana | _(empty)_ | Admin password; empty = anonymous access |
-| `GRAFANA_ANON_ENABLED` | Grafana | `true` | Allow anonymous viewing |
 | `DB_PASSWORD` | TimescaleDB | `logos_internal_db` | Internal DB password (not publicly exposed) |
 | `NODE_API` | explorer, indexer | `http://host.docker.internal:8080` | Logos node HTTP API |
 | `SIDECAR_API` | explorer, indexer | `http://sidecar:8081` | Sidecar URL (internal) |

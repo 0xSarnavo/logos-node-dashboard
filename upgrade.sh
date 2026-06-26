@@ -82,7 +82,7 @@ echo ""
 echo "[7/7] Verifying services..."
 echo ""
 
-SERVICES=("logos-grafana" "logos-prometheus" "logos-loki" "logos-otel-collector" "logos-node-exporter" "logos-tempo" "logos-timescaledb" "logos-indexer")
+SERVICES=("logos-prometheus" "logos-node-exporter" "logos-timescaledb" "logos-indexer" "logos-sidecar" "logos-explorer")
 ALL_OK=true
 RETRIES=0
 MAX_RETRIES=3
@@ -129,10 +129,7 @@ if [ "$ALL_OK" = true ]; then
   echo ""
   echo "  Data preserved in Docker volumes:"
   echo "    prometheus-data    (metrics)"
-  echo "    loki-data          (logs)"
-  echo "    tempo-data         (traces)"
   echo "    timescale-data     (blockchain data)"
-  echo "    grafana-data       (dashboard settings)"
 else
   echo "  WARNING: Some services failed to start."
   echo "  Run: docker compose logs <service-name>"

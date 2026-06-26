@@ -53,7 +53,7 @@ logos-node-dashboard/
 ├── indexer/                   # Python indexer: polls node API → writes to TimescaleDB
 │   └── init.sql               # database schema (blocks, peers, *_snapshots, faucet_*)
 ├── sidecar/                   # Python sidecar: reads node RocksDB via `ldb` (read-only)
-├── prometheus/ loki/ tempo/ otel-collector/ grafana/   # observability config
+├── prometheus/                # scrape config
 ├── docker-compose.yml         # full stack
 ├── docker-compose.dev.yml     # explorer hot-reload override
 ├── docs/                      # DEPLOYMENT, SECURITY, RASPBERRY_PI guides
@@ -75,7 +75,7 @@ sidecar (:8081)  ──parsed block content──▶    │  Next.js explorer   
    │                                          │  • /api/* route handlers│──SQL──▶ TimescaleDB
 indexer ──polls node API, geolocates peers──▶ TimescaleDB  ◀───────────┘
                                               └────────────────────────┘
-Observability: node ──OTLP──▶ otel-collector ──▶ Prometheus / Loki / Tempo ──▶ Grafana
+Host metrics:  node-exporter ──▶ Prometheus ──▶ explorer (VM panel)
 ```
 
 1. **indexer** polls the node's HTTP API every few seconds and writes blocks, peers,
@@ -85,7 +85,6 @@ Observability: node ──OTLP──▶ otel-collector ──▶ Prometheus / Lo
 3. The **explorer's `/api/*` handlers** read TimescaleDB (parameterized SQL) and call the
    node / sidecar, then the pages render the result. Transaction decoding uses the node's
    `POST /storage/block` endpoint (`src/lib/tx.ts`).
-4. **Grafana** visualizes the metrics/logs/traces stack — separate from the explorer.
 
 A more detailed architecture diagram lives in the [README](README.md#architecture).
 
