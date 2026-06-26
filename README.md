@@ -2,7 +2,7 @@
 
 A self-hosted, dark-mode **block explorer & monitoring dashboard** for a [Logos](https://logos.co) (Nomos / Cryptarchia) blockchain node. It pairs a custom **Next.js explorer** with a full observability stack (TimescaleDB, Prometheus, Grafana, Loki, Tempo) and runs entirely locally via Docker Compose.
 
-> Explorer UI → **http://localhost:3333**  ·  Grafana → **http://localhost:3000**
+> Explorer UI → **http://localhost:3333**
 
 > **Disclaimer:** This is an independent, community-built project by a standalone developer. It is **not** affiliated with, endorsed by, or maintained by the Logos / Nomos core dev team. Provided as-is.
 
@@ -72,23 +72,38 @@ Transaction detail is decoded straight from the node's `POST /storage/block` end
   - its data directory (`state/db` RocksDB + logs) readable on the host
 - ~2 GB free RAM for the full stack
 
-> The node data paths are host-specific mounts in `docker-compose.yml` (`indexer.volumes` and `sidecar.volumes`). **Edit those paths** to point at your node's directory before the first run.
+> Point the dashboard at your node by setting **`NODE_DIR`** in `.env` (no need to
+> edit `docker-compose.yml` anymore). It defaults to a sibling `../logos-node`.
 
 ---
 
-## Quick start
+## Quick start (any platform — just Docker)
+
+Works the same on **macOS, Linux, Raspberry Pi, WSL2, and cloud VMs** — Docker
+auto-selects the right CPU architecture (arm64 / amd64).
 
 ```bash
 git clone <this-repo>
 cd logos-node-dashboard
 
-cp .env.example .env                 # then edit the values
-# edit docker-compose.yml node-data mount paths to match your node
-
-docker compose up -d --build         # build + start everything
+cp .env.example .env                 # set NODE_DIR (path to your logos-node dir)
+docker compose up -d --build         # build + start the lean stack
 ```
 
-Open **http://localhost:3333** (explorer) and **http://localhost:3000** (Grafana).
+Open **http://localhost:3333** (explorer). That's it.
+
+**Choose how much to run** with `COMPOSE_PROFILES` in `.env` (Compose reads it automatically):
+
+| `COMPOSE_PROFILES` | Starts | Use on |
+|---|---|---|
+| *(empty)* | explorer + db + indexer + sidecar + prometheus + node-exporter | laptop / Pi / WSL / dev |
+| `public` | + Caddy (HTTPS via your domain) | a public server |
+| `tracing` | + Loki + Tempo + OpenTelemetry (heavy) | deep debugging only |
+
+Per-platform notes:
+- **Raspberry Pi / 1–2 vCPU:** keep profiles empty and set `POLL_INTERVAL=5` in `.env`.
+- **WSL2:** keep this repo and the node under the Linux home (`~/...`), not `/mnt/c` (bind mounts off `/mnt/c` are slow).
+- **Cloud VM (public):** set `COMPOSE_PROFILES=public`, point a domain at it, and put your domain in `Caddyfile` (see `Caddyfile.example`).
 
 Guided helper scripts are also provided:
 
