@@ -41,37 +41,47 @@ This is the simplest secure remote setup.
 
 ### Steps
 
-1. **Install the stack** as usual (`cp .env.example .env`, edit mounts, set a real
-   `DB_PASSWORD` and `GRAFANA_ADMIN_PASSWORD`), then `docker compose up -d --build`.
-   Keep the explorer on `127.0.0.1:3333` — do **not** change its binding.
+The repo ships a **Caddy reverse proxy as a compose service**, opt-in via the `public`
+profile. It does automatic HTTPS and Basic Auth in front of the explorer — no separate host
+install needed.
 
-2. **Install [Caddy](https://caddyserver.com/docs/install)** (it does automatic HTTPS).
+1. **Configure `.env`:** `cp .env.example .env`, then set:
+   - a real `DB_PASSWORD`,
+   - `NODE_DIR` → the path to your logos-node data dir on this host,
+   - `COMPOSE_PROFILES=public` → so `docker compose` starts Caddy alongside the lean stack.
 
-3. **Generate a password hash** (never store plaintext):
+2. **Generate a password hash** (never store plaintext):
    ```bash
-   caddy hash-password --plaintext 'your-strong-password'
+   docker run --rm caddy:2 caddy hash-password --plaintext 'your-strong-password'
    # → $2a$14$....   (copy this)
    ```
 
-4. **Create `/etc/caddy/Caddyfile`:**
+3. **Create `./Caddyfile`** from the template (`cp Caddyfile.example Caddyfile`) and point it
+   at your domain (the real `Caddyfile` is gitignored, so `git pull` never clobbers your hash):
    ```caddyfile
    logos.example.com {
        encode gzip
 
-       basicauth {
+       basic_auth {
            admin $2a$14$REPLACE_WITH_YOUR_HASH
        }
 
-       reverse_proxy 127.0.0.1:3333
+       reverse_proxy explorer:3333
    }
    ```
 
-5. **Start Caddy:** `sudo systemctl reload caddy` (or `caddy run` to test).
-   Caddy fetches a Let's Encrypt cert automatically. Visit `https://logos.example.com` —
-   you'll get a login prompt, then the dashboard.
+4. **Start the stack:** `docker compose up -d --build`. With `COMPOSE_PROFILES=public` this
+   brings up Caddy on ports **80/443** (and **:8443** for legacy plain-HTTP access) in front of
+   the explorer, which stays bound to `127.0.0.1:3333`. Caddy fetches a Let's Encrypt cert
+   automatically. Visit `https://logos.example.com` — you'll get a login prompt, then the
+   dashboard.
 
 > Result: the whole dashboard — including the faucet — is reachable only after login, over
 > HTTPS. This is the recommended default for a personal remote deployment.
+>
+> Prefer to run Caddy (or nginx) yourself on the host instead of the bundled service? Leave
+> `COMPOSE_PROFILES` empty, keep the explorer on `127.0.0.1:3333`, and `reverse_proxy
+> 127.0.0.1:3333` from your host proxy. See the [nginx alternative](#nginx-alternative) below.
 
 ---
 
@@ -92,11 +102,11 @@ logos.example.com {
         path /api/faucet*
         path /api/node*
     }
-    basicauth @operator {
+    basic_auth @operator {
         admin $2a$14$REPLACE_WITH_YOUR_HASH
     }
 
-    reverse_proxy 127.0.0.1:3333
+    reverse_proxy explorer:3333
 }
 ```
 
@@ -126,7 +136,7 @@ logos.example.com {
     }
     respond @blocked 404
 
-    reverse_proxy 127.0.0.1:3333
+    reverse_proxy explorer:3333
 }
 ```
 
@@ -196,4 +206,4 @@ docker run --rm -v logos-node-dashboard_timescale-data:/data -v "$PWD":/backup \
 ## Raspberry Pi
 
 Running on a Pi is fully supported — see **[RASPBERRY_PI.md](RASPBERRY_PI.md)** for specs,
-a lighter "core-only" profile, and step-by-step setup.
+the lean stack (`COMPOSE_PROFILES=` empty, `POLL_INTERVAL=5`), and step-by-step setup.

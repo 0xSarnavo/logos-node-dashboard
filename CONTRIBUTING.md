@@ -25,7 +25,7 @@ open an issue — improving the docs is a valid contribution too.
 - **Suggest a feature** — open an issue describing the problem you want solved.
 - **Improve docs** — README, this file, the `docs/` guides, code comments.
 - **Send a pull request** — bug fixes, new explorer panels, API endpoints, indexer
-  metrics, Grafana dashboards.
+  metrics.
 
 You do **not** need a running Logos node to improve the UI, types, docs, or to fix
 lint/type errors — the app runs (with empty data) without one.
@@ -54,7 +54,7 @@ logos-node-dashboard/
 │   └── init.sql               # database schema (blocks, peers, *_snapshots, faucet_*)
 ├── sidecar/                   # Python sidecar: reads node RocksDB via `ldb` (read-only)
 ├── prometheus/                # scrape config
-├── docker-compose.yml         # full stack
+├── docker-compose.yml         # all services (lean by default; `public` profile adds Caddy)
 ├── docker-compose.dev.yml     # explorer hot-reload override
 ├── docs/                      # DEPLOYMENT, SECURITY, RASPBERRY_PI guides
 ├── .env.example               # copy to .env
@@ -95,8 +95,7 @@ A more detailed architecture diagram lives in the [README](README.md#architectur
 ### With Docker (recommended — matches production)
 
 ```bash
-cp .env.example .env                    # edit values
-# point the node-data mount paths in docker-compose.yml at your node
+cp .env.example .env                    # set NODE_DIR (path to your logos-node dir) + values
 
 # hot-reload dev server (code edits appear instantly):
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d explorer
@@ -197,7 +196,7 @@ Areas that are friendly to new contributors:
 - Light/dark-mode color polish (find a panel that reads poorly and fix the override).
 - Mobile/tablet responsive tweaks.
 - New `InfoTip` explanations for terms that aren't yet documented.
-- Additional `/api/*` filters or a new Grafana panel.
+- Additional `/api/*` filters or a new explorer panel.
 - Docs: clarify a setup step that tripped you up.
 
 Look for issues labeled `good first issue` / `help wanted`.

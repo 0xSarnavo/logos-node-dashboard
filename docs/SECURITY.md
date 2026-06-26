@@ -31,14 +31,23 @@ From `docker-compose.yml`, all published ports are bound to loopback:
 |---------|------|---------|-------------------------|
 | explorer (UI + `/api`) | 3333 | `127.0.0.1:3333` | No |
 | Prometheus | 9090 | `127.0.0.1:9090` | No |
-| OTLP collector | 4317/4318 | `127.0.0.1:*` | No |
+| node-exporter | 9100 | internal Docker network only | No |
 | TimescaleDB | 5432 | internal Docker network only | No |
 | sidecar | 8081 | internal Docker network only | No |
 
-So out of the box, you must be **on the machine** (or tunnel in) to reach anything. Good.
+So out of the box (the default `COMPOSE_PROFILES=` lean stack), you must be **on the machine**
+(or tunnel in) to reach anything. Good.
 
-The risk appears only when you **(a)** change a binding to `0.0.0.0`, **(b)** put a reverse
-proxy in front, or **(c)** open ports in your firewall/router — without also adding auth.
+The one exception is the **`public` profile**: setting `COMPOSE_PROFILES=public` starts the
+bundled **Caddy** reverse proxy, which deliberately publishes ports **80/443** (public HTTPS
+for your domain) and **8443** (legacy plain-HTTP). That's the intended public surface — Caddy
+terminates TLS and enforces Basic Auth in front of the explorer, which itself stays on
+`127.0.0.1:3333`. Only enable this profile on a server you actually want reachable, and keep a
+strong Basic Auth hash in `./Caddyfile`. The Logos node's own API (`:8080`) and the `:8443`
+plain-HTTP path are optional/operator surfaces — gate or firewall them as needed.
+
+Otherwise the risk appears only when you **(a)** change a binding to `0.0.0.0`, **(b)** put a
+reverse proxy in front, or **(c)** open ports in your firewall/router — without also adding auth.
 
 ---
 
@@ -53,7 +62,7 @@ If you expose the explorer **without** auth, an attacker who finds the URL can:
    requests using the wallet keys in `WALLET_KEYS`. A remote user could **start/stop faucet
    sessions on your behalf** and read your tracked wallet activity. This is the most
    sensitive surface — treat the faucet page as **operator-only**.
-3. **Hit your Grafana/Prometheus** if you also published those.
+3. **Hit your Prometheus** if you also published it (it's `127.0.0.1`-only by default).
 
 What an attacker **cannot** do over the web:
 
@@ -73,8 +82,9 @@ What an attacker **cannot** do over the web:
 Work top-down; the first three stop the most.
 
 ### 1. Keep services on loopback; expose only the proxy
-Leave the `127.0.0.1:` bindings as-is. Put a reverse proxy (Caddy/nginx) on `443` and let it
-talk to `127.0.0.1:3333`. Never bind `:3333`, `:3000`, `:5432`, `:8081` to `0.0.0.0`.
+Leave the `127.0.0.1:` bindings as-is. Put a reverse proxy on `443` in front of the explorer —
+either the bundled Caddy (`COMPOSE_PROFILES=public`) or your own host Caddy/nginx talking to
+`127.0.0.1:3333`. Never bind `:3333`, `:9090`, `:5432`, `:8081` to `0.0.0.0` yourself.
 
 ### 2. Terminate TLS (HTTPS)
 Use Caddy (automatic Let's Encrypt) or certbot + nginx. No plaintext HTTP for a remote host.
@@ -107,7 +117,7 @@ PasswordAuthentication no      # key-only
 - Without shell access, nobody can run `reset.sh` or read your `.env`.
 
 ### 6. Strong passwords (see next section)
-Grafana admin, `DB_PASSWORD`, and any proxy Basic Auth credentials.
+`DB_PASSWORD` and any proxy Basic Auth credentials (the Caddy bcrypt hash in `./Caddyfile`).
 
 ### 7. Faucet hygiene
 - Only set `WALLET_KEYS` if you actually use the faucet, and prefer **low-value testnet
@@ -117,7 +127,8 @@ Grafana admin, `DB_PASSWORD`, and any proxy Basic Auth credentials.
 
 ### 8. Keep secrets in `.env` only
 `.env` is gitignored; `.env.example` carries no secrets. Never commit real keys/passwords.
-Rotate `DB_PASSWORD` and Grafana creds away from their defaults before exposing anything.
+Rotate `DB_PASSWORD` away from its default before exposing anything, and keep the Caddy
+Basic Auth hash in `./Caddyfile` (also gitignored).
 
 ### 9. Updates & backups
 - `./upgrade.sh` pulls/rebuilds with a rolling restart (no data loss).
@@ -131,11 +142,11 @@ Rotate `DB_PASSWORD` and Grafana creds away from their defaults before exposing 
 Generate, don't invent:
 
 ```bash
-# A long random password (use for DB_PASSWORD, Grafana admin, etc.)
+# A long random password (use for DB_PASSWORD, etc.)
 openssl rand -base64 24
 
 # A bcrypt hash for Caddy Basic Auth (don't store the plaintext in the Caddyfile)
-caddy hash-password --plaintext 'your-strong-password'
+docker run --rm caddy:2 caddy hash-password --plaintext 'your-strong-password'
 
 # An htpasswd entry for nginx Basic Auth
 htpasswd -nB admin            # prompts, prints user:hash
@@ -144,7 +155,7 @@ htpasswd -nB admin            # prompts, prints user:hash
 Guidance:
 - **≥ 16 characters**, random, unique per service. Use a password manager.
 - Change `DB_PASSWORD` from the `logos_internal_db` default before any non-local use.
-- Set a real `GRAFANA_ADMIN_PASSWORD` (empty = anonymous access, fine **only** on localhost).
+- Set a strong Caddy Basic Auth hash in `./Caddyfile` before enabling the `public` profile.
 - Never reuse your SSH key passphrase as an app password.
 
 ---
@@ -156,7 +167,7 @@ Guidance:
 - [ ] Visiting the site from another device **prompts for login** (or the faucet/node pages do).
 - [ ] `ufw status` denies everything except 22/80/443.
 - [ ] SSH is key-only, root login disabled.
-- [ ] `DB_PASSWORD` and Grafana password are not the defaults.
+- [ ] `DB_PASSWORD` is not the default, and the Caddy Basic Auth hash is set (if using `public`).
 - [ ] `WALLET_KEYS` is unset, or holds only disposable testnet keys, and `/faucet` is gated.
 
 If every box is checked, a stranger with your URL can't read your node data, can't run the

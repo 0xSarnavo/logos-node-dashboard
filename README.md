@@ -18,7 +18,7 @@ The custom explorer (`/app`) gives you, in real time:
 | **Blocks** (`/blocks`) | Block list with status/speed/time filters, block-time distribution, a **live slot strip** (final / live / empty), per-block detail (`/blocks/[height]`) |
 | **Transactions** (`/transactions`) | **Decoded** transactions (Transfer, ChannelInscribe…) with confirmed/pending status, click-a-block-to-filter, time-period filter, full operation breakdown (`/transactions/[hash]`) |
 | **Peers** (`/peers`) | Interactive **rotating 3D globe** (drag / scroll-zoom), per-node status, your own node in blue, leaderboards (longest-tracked, top countries, top networks), searchable peer table |
-| **My Node** (`/node`) | Sync ring, health checks, bento metric tiles, time-range charts (5m → 1y), wallets, consensus state, network identity (location / ISP) |
+| **My Node** (`/node`) | Sync ring, health checks, bento metric tiles, time-range charts (5m → 1y), wallets, consensus state, network identity (location / ISP), a **Host Machine (VM)** panel (host CPU / memory / disk / load average / CPU steal / cores from Prometheus) and a **Block Production** panel (blocks this node proposed — proposed / final / orphaned, with this-node and network orphan rates) |
 | **Faucet** (`/faucet`) | Server-side faucet runner with live session stats, graphs (calls/min, grants vs duplicates, latency), per-wallet activity logs |
 
 Transaction detail is decoded straight from the node's `POST /storage/block` endpoint; raw block content comes from a sidecar that reads the node's RocksDB.
@@ -112,6 +112,11 @@ Guided helper scripts are also provided:
 ./reset.sh      # full wipe (deletes all data + credentials)
 ```
 
+> Upgrades don't need a DB wipe: the indexer runs **self-healing migrations**
+> (`ALTER TABLE … ADD COLUMN IF NOT EXISTS`, e.g. `blocks.is_orphaned` and
+> `block_content.leader_key`) on startup, so an existing database is brought up to schema
+> automatically.
+
 ---
 
 ## Development (hot-reload)
@@ -156,7 +161,7 @@ logos-node-dashboard/
 ├── indexer/                   # Python indexer (node → TimescaleDB) + init.sql schema
 ├── sidecar/                   # Python sidecar (reads node RocksDB via ldb)
 ├── prometheus/                # scrape config
-├── docker-compose.yml         # full stack
+├── docker-compose.yml         # all services (lean by default; `public` profile adds Caddy)
 ├── docker-compose.dev.yml     # explorer hot-reload override
 ├── .env.example               # copy to .env
 └── start.sh / stop.sh / upgrade.sh / reset.sh
@@ -170,11 +175,16 @@ Copy `.env.example` → `.env` (gitignored). Key variables:
 
 | Variable | Used by | Default | Notes |
 |----------|---------|---------|-------|
+| `COMPOSE_PROFILES` | docker compose | _(empty)_ | Empty = lean stack; `public` also starts Caddy (HTTPS via your domain) |
+| `NODE_DIR` | indexer, sidecar | `../logos-node` | Path on this host to the logos-node data dir (drives both bind-mounts) |
 | `DB_PASSWORD` | TimescaleDB | `logos_internal_db` | Internal DB password (not publicly exposed) |
 | `NODE_API` | explorer, indexer | `http://host.docker.internal:8080` | Logos node HTTP API |
 | `SIDECAR_API` | explorer, indexer | `http://sidecar:8081` | Sidecar URL (internal) |
 | `WALLET_KEYS` | explorer (faucet / wallets) | _(two demo keys)_ | Comma-separated 64-hex wallet public keys to track |
-| `POLL_INTERVAL` | indexer | `3` | Seconds between node polls |
+| `NODE_LEADER_KEYS` | explorer (Block Production panel) | _(falls back to `WALLET_KEYS`)_ | Comma-separated 64-hex node leader/funding public keys that identify "my" blocks |
+| `PROM_URL` | explorer (Host VM panel) | `http://prometheus:9090` | Prometheus URL the explorer queries for host metrics |
+| `FAUCET_ENABLED` | explorer | `true` | Set `false` to disable the faucet endpoints entirely |
+| `POLL_INTERVAL` | indexer | `3` | Seconds between node polls (raise to 5–10 on small machines) |
 
 The explorer's DB connection (`DB_HOST/PORT/NAME/USER/PASSWORD`) and the node/sidecar URLs are wired in `docker-compose.yml`.
 
@@ -203,7 +213,7 @@ The explorer's DB connection (`DB_HOST/PORT/NAME/USER/PASSWORD`) and the node/si
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Project layout, data flow, dev setup, coding conventions, how to report issues / send PRs |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, what's exposed, hardening checklist, strong passwords, why "remote reset" is an SSH concern |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Remote hosting with a domain: reverse proxy + HTTPS, gating faucet/node behind a login, or disabling them entirely |
-| [docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md) | Running on a Pi: hardware specs, a lighter core-only profile, step-by-step setup |
+| [docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md) | Running on a Pi: hardware specs, the lean stack, tuning (`POLL_INTERVAL`), step-by-step setup |
 
 ---
 
@@ -219,7 +229,7 @@ running Logos node to improve the UI, types, or docs.
 ## Troubleshooting
 
 - **"Node API is not responding"** — the node's `:8080` API is down/unreachable; check `NODE_API` and that the node is running.
-- **Empty blocks/transactions** — the indexer/sidecar are backfilling, or the node-data mount paths in `docker-compose.yml` are wrong.
+- **Empty blocks/transactions** — the indexer/sidecar are backfilling, or `NODE_DIR` in `.env` doesn't point at your logos-node data dir.
 - **Edits don't show up** — you're on the baked production image; use the dev override above, or rebuild `explorer`.
 - **Long time-ranges (7d / 1y) look sparse** — the database only holds as much history as the node/indexer has been running.
 
